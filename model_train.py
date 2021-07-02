@@ -230,7 +230,7 @@ def main(args):
 
                 lr = optimizer.param_groups[0].get("lr")
 
-                metric_str = f"Epoch [{epoch:03d} / {epochs:03d}] || Step [{step:6d}] ||  Time [{step_time:0.3f} ({total_time / total_steps:.3f})] || lr [{lr:.5f}]"
+                metric_str = f"Epoch [{epoch:03d} / {epochs:03d}] || Step [{step:6d}] ||  Time [{total_time:0.3f} ({total_time / total_steps:.3f})] || lr [{lr:.5f}]"
 
                 for name, metric in metrics.items():
                     avg_metric = metric.mean()
@@ -282,7 +282,7 @@ def main(args):
 
             epoch_loss = total_loss / total_steps
 
-            metric_str = f"Epoch [{epoch:03d} / {epochs:03d}] || Steps [{total_steps:5d}] || Time [{total_time:.2f} ({total_time / total_steps:.2f})] || Validation loss [{epoch_loss:.4f}]"
+            metric_str = f"Epoch [{epoch:03d} / {epochs:03d}] || Step [{total_steps:5d}] || Time [{total_time:.2f} ({total_time / total_steps:.2f})] || Validation loss [{epoch_loss:.4f}]"
 
             logging.info(metric_str)
             logger.add_scalar("val_loss_epoch", epoch_loss, global_step=epoch)
