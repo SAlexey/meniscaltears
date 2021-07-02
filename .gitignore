@@ -149,3 +149,4 @@ cython_debug/
 **/runs/
 **/logs/
 **/nohup.out
+**/scratch*
