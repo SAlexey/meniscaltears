@@ -1,3 +1,4 @@
+#%%
 import os
 import torch
 from torch.utils.data import Dataset
@@ -19,7 +20,7 @@ class DatasetBase(Dataset):
 
     Kwargs:
         transforms (optional, Sequence[Callable]): transforms applied to the inputs
-       
+
 
     Notes:
         annotations: must be a json file that loads into a dictionary with unique image ids as keys
@@ -39,38 +40,109 @@ class DatasetBase(Dataset):
     ):
         self.root = root
         with open(anns) as fh:
-            self.anns = json.load(fh)
+            anns = json.load(fh)
 
-        self.keys = sorted(
-            [key for key in self.anns.keys() if len(self.anns[key]["boxes"]) == 2]
-        )
+        # filter annotations where there are two boxes
+        self.anns = [
+            ann for ann in anns if len(ann["boxes"]) == 2 and all(ann["boxes"])
+        ]
 
         self.transform = transforms
 
     def __len__(self):
-        return len(self.keys)
+        return len(self.anns)
 
     def __getitem__(self, idx):
-        key = self.keys[idx]
-        ins = self._get_input(key)
-        tgt = self._get_target(key)
+        input = self._get_input(idx)
+        target = self._get_target(idx)
 
         if self.transform is not None:
-            ins, tgt = self.transform(ins, tgt)
+            input, target = self.transform(input, target)
 
-        return ins, tgt
+        return input, target
 
-    def _get_input(self, key):
-        read = self._get_reader(key)
-        path = os.path.join(self.root, f"{key}.npy")
+    def _get_input(self, idx):
+        ann = self.anns[idx]
+        read = self._get_reader(ann)
+        path = os.path.join(self.root, f"{ann['image_id']}.npy")
         return read(path)
 
-    def _get_reader(self, key):
+    def _get_reader(self, idx):
         return np.load
 
-    def _get_target(self, key):
-        return self.anns[key]
+    def _get_target(self, idx):
+        return self.anns[idx]
 
+
+class MOAKSDataset(DatasetBase):
+    def __init__(self, *args, binary=True, multilabel=False, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.targets = []
+        self.pos_weight = 0 if binary else None
+
+        for ann in self.anns:
+            target = {
+                "image_id": np.asarray(ann["image_id"], dtype=int),
+                "patient_id": np.asarray(ann["patient_id"], dtype=int),
+            }
+
+            if multilabel:
+                labels = [
+                    [
+                        ann.get("V00MMTLA"),
+                        ann.get("V00MMTLB"),
+                        ann.get("V00MMTLP"),
+                    ],
+                    [
+                        ann.get("V00MMTMA"),
+                        ann.get("V00MMTMB"),
+                        ann.get("V00MMTMP"),
+                    ],
+                ]
+            else:
+                labels = [ann.get("LAT", 0), ann.get("MED", 0)]
+
+            labels = np.nan_to_num(np.asarray(labels, dtype=np.float32))
+
+            if binary:
+                labels = (labels > 1).astype(float)
+                self.pos_weight += labels
+
+            target["labels"] = labels
+            target["boxes"] = np.array(ann.get("boxes"))
+
+            self.targets.append(target)
+
+        if self.pos_weight is not None:
+            self.pos_weight = (len(self) - self.pos_weight) / self.pos_weight
+
+    def _get_input(self, key):
+        input = super()._get_input(key)
+        return np.expand_dims(input, 0).clip(0, 255).astype(float)
+
+    def _get_target(self, key):
+        return self.targets[key]
+
+    def __getitem__(self, idx):
+        input, target = super().__getitem__(idx)
+        ann = self.anns[idx]
+
+        # flip left to right.
+        # see README.md
+        if ann["side"] == "left":
+            # assume by now input is a torch.Tensor[ch d h w]
+            input = input.flip(1)
+            target["boxes"] = target["boxes"].flip(0)
+        return input, target
+
+
+ds = MOAKSDataset(
+    "/scratch/visual/ashestak/oai/v00/data/inputs",
+    "/scratch/visual/ashestak/meniscaltears/data/train.json",
+    multilabel=True,
+)
+#%%
 
 class DICOMDataset(DatasetBase):
     reader = sitk.ImageSeriesReader()
@@ -118,104 +190,3 @@ class DICOMDatasetMasks(DICOMDataset):
         mask = torch.from_numpy(mask)
         boxes = torch.as_tensor(boxes) / torch.as_tensor(mask.shape).repeat(1, 2)
         return mask.unsqueeze(0), boxes
-
-
-class MOAKSDataset(DatasetBase):
-    def _get_input(self, key):
-        input = super()._get_input(key)
-        return np.expand_dims(input, 0)
-
-    def _get_target(self, key):
-        ann = super()._get_target(key)
-        return {
-            "image_id": int(key),
-            "patient_id": ann.get("patient_id", 0),
-            "boxes": ann.get("boxes", []),
-            "side": int(ann.get("side") == "right"),
-            "labels": (ann.get("MED", 0), ann.get("LAT", 0)),
-        }
-
-    def __getitem__(self, idx):
-        img, tgt = super().__getitem__(idx)
-
-        # flip left to right
-        if not tgt["side"]:
-            tgt = tgt.copy()
-            img = img.flip(1)
-            tgt["boxes"] = tgt["boxes"].flip(0)
-            tgt["labels"] = tgt["labels"].flip(0)
-        return img, tgt
-
-
-class MOAKSDatasetBinaryMonolabel(DatasetBase):
-    def _get_input(self, key):
-        input = super()._get_input(key)
-        return np.expand_dims(input, 0)
-
-    def _get_target(self, key):
-        ann = super()._get_target(key)
-        return {
-            "image_id": int(key),
-            "patient_id": ann.get("patient_id", 0),
-            "boxes": ann.get("boxes", []),
-            "side": int(ann.get("side") == "right"),
-            "labels": (ann.get("MED", 0), ann.get("LAT", 0)),
-        }
-
-    def __getitem__(self, idx):
-        img, tgt = super().__getitem__(idx)
-
-        # flip left to right
-        if not tgt["side"]:
-            tgt = tgt.copy()
-            img = img.flip(1)
-            tgt["boxes"] = tgt["boxes"].flip(0)
-            tgt["labels"] = tgt["labels"].flip(0)
-        return img, tgt
-
-
-class MOAKSDatasetBinaryMultilabel(MOAKSDatasetBinaryMonolabel):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        pos_weight = []
-
-        for key in self.keys:
-            ann = self.anns[key]
-
-            labels = np.nan_to_num(
-                np.array(
-                    [
-                        [
-                            ann["V00MMTMA"],
-                            ann["V00MMTMB"],
-                            ann["V00MMTMP"],
-                        ],
-                        [
-                            ann["V00MMTLA"],
-                            ann["V00MMTLB"],
-                            ann["V00MMTLP"],
-                        ],
-                    ],
-                    dtype=np.float,
-                ),
-            )
-
-            if ann["side"] == "left":
-                pos_weight.append(np.flip(labels, 0).flatten())
-            else:
-                pos_weight.append(labels.flatten())
-
-            ann["labels"] = (labels > 1).astype(float)
-
-        pos_weight = np.vstack(pos_weight)
-        count = pos_weight.shape[0]
-        pos_weight = (pos_weight > 1).sum(0)
-        pos_weight = (count - pos_weight) / pos_weight
-        self.pos_weight = torch.from_numpy(pos_weight.reshape(2, 3))
-
-    def _get_target(self, key):
-        tgt = super()._get_target(key)
-        ann = self.anns[key]
-        tgt["labels"] = ann["labels"]
-        return tgt

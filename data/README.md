@@ -1,3 +1,54 @@
+# Segmentation Masks:
+
+root directory  
+/vis/scratchN/bzftacka/OAI_DESS_Data_AllTPs/Merged/v00/OAI/
+
+## segmentation labels (menisci)
+
+| Side   | Label  | Meniscus |
+| ------ | ------ | -------- |
+| left   |    5   | medial   |
+|        |    6   | lateral  |
+| right  |    5   | lateral  |
+|        |    6   | medial   |
+
+=> when generating boxes you get: 
+
+for the left side:  
+> boxes = [medial, lateral]
+
+for the right side: 
+> boxes = [lateral, medial]
+
+=> to get correct targets from annotations
+
+```python
+img = np.load(...) # load the image
+tgt = {
+    "labels": [anns.get("LAT"), anns.get("MED")], # for binary
+    # OR for multilabel
+    "labels": [
+        [
+            anns.get("V00MMTLA"),
+            anns.get("V00MMTLB"),
+            anns.get("V00MMTLP"),
+        ],
+        [
+            anns.get("V00MMTMA"),
+            anns.get("V00MMTMB"),
+            anns.get("V00MMTMP"),
+        ]
+    ]
+    "boxes": anns.get("boxes")
+}
+
+if anns.get("side") == "left":
+    img = img.flip(0)
+    tgt["boxes"] = tgt["boxes"][::-1]
+```
+
+
+
 # Data Path 
 
 /scratch/visual/ashestak/oai/v00/data/inputs/
