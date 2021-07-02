@@ -115,7 +115,9 @@ class MOAKSDataset(DatasetBase):
             self.targets.append(target)
 
         if self.pos_weight is not None:
-            self.pos_weight = (len(self) - self.pos_weight) / self.pos_weight
+            self.pos_weight = torch.as_tensor(
+                (len(self) - self.pos_weight) / self.pos_weight
+            )
 
     def _get_input(self, key):
         input = super()._get_input(key)
@@ -143,6 +145,7 @@ ds = MOAKSDataset(
     multilabel=True,
 )
 #%%
+
 
 class DICOMDataset(DatasetBase):
     reader = sitk.ImageSeriesReader()
