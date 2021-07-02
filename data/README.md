@@ -8,11 +8,51 @@
 
 on z1 replace 'visual' by 'htc'
 
+# MOAKS 
+
+File moaks_complete.csv
+
+can use that to sample and generate your own splits (annotations)
+
 # Annotations
+
+Anotations are json files with image id as keys (see example below)  
+
+### splits: 
 
 - train.json 
 - val.json 
-- test.json 
+- test.json
+
+```json
+annotations = {
+    // ...
+"10934012": {
+    "dicom_dir": "/vis/scratchN/oaiDataBase/v00/OAI/0.E.1/9028904/20050621/10934012/",
+    "patient_id": 9028904,
+    "image_id": 10934012,
+    "side": "right",
+    "boxes": [
+        [35, 221, 138, 84, 255, 271],   // boxes in xyxy format 
+        [97, 203, 162, 143, 247, 265]   // see torchvision.ops for box formats (also below)
+    ], 
+    "labels": [0, 1],
+    "ID": 9028904,
+    "SIDE": "right",
+    "READPRJ": "65", // Moaks scores for menisci 
+    "V00MMTMA": 0.0, // Medial  Anterior Horn
+    "V00MMTMB": 1.0, // Medial Body
+    "V00MMTMP": 3.0, // Medial Posterior Horn
+    "V00MMTLA": 0.0, // Lateral Anterior Horn
+    "V00MMTLB": 0.0, // Lateral Body
+    "V00MMTLP": 1.0, // Lateral Posterior Horn
+    "PATH": "0.E.1/9028904/20050621/10934012/", // relative path to dicom
+    "MED": 1,  // overall score for medial meniscus
+    "LAT": 0  // overall score for lateral meniscus
+    }
+    // ...
+}
+```
 
 # Datasets: 
 
@@ -24,11 +64,11 @@ generates targets (dict) that contain
 Example:   
 ```
 target = {  
-	"labels": [0, 1]  # medial, lateral
-	"boxes": [  
-		[zmin1, ymin1, xmin1, zmax1, ymax1, xmax1],  # medial
-		[zmin2, ymin2, xmin2, zmax2, ymax2, xmax2]   # lateral
-	]  
+    "labels": [0, 1]  # medial, lateral
+    "boxes": [  
+        [zmin1, ymin1, xmin1, zmax1, ymax1, xmax1],  # medial
+        [zmin2, ymin2, xmin2, zmax2, ymax2, xmax2]   # lateral
+    ]  
 }
 ```
 
@@ -40,11 +80,11 @@ target = {
 Example: 
 ```
 target = {
-	"boxes":  ... ,
-	"labels: [
-		[0, 1, 1], # Anterior Horn, Body, Posterior Horn (medial)
-		[0, 0, 1]  # lateral
-	]
+    "boxes":  ... ,
+    "labels: [
+        [0, 1, 1], # Anterior Horn, Body, Posterior Horn (medial)
+        [0, 0, 1]  # lateral
+    ]
 
 }
 ```
