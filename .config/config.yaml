@@ -1,0 +1,26 @@
+defaults:
+  - model: vit
+
+# MODEL
+device: cpu
+checkpoint: false
+state_dict: false 
+
+# CRITERION
+weights: 
+  labels: 1
+  boxes: 5 
+  giou: 2
+
+# DATA
+data_dir: oai/v00/data/inputs
+anns_dir: oai/v00/data/moaks
+
+# TRAINING HPARAMS
+num_epochs: 500
+num_workers: 8
+batch_size: 1
+lr: 0.001
+lr_drop_step: 50
+lr_drop_rate: 0.5
+window: 50
