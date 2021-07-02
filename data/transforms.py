@@ -159,10 +159,7 @@ class ToTensor(object):
             if isinstance(tgt, dict):
                 tgt = tgt.copy()
                 for k, v in tgt.items():
-                    if _is_numeric(v) or (_is_sequence(v) and _is_numeric(v)):
-                        tgt[k] = torch.as_tensor(v)
-            elif _is_numeric(tgt) or (_is_sequence(tgt) and _is_numeric(tgt)):
-                tgt = torch.as_tensor(tgt)
+                    tgt[k] = torch.as_tensor(v)
         return img, tgt
 
 

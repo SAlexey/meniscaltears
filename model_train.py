@@ -221,7 +221,7 @@ def main(args):
 
             loss_value = loss.detach().cpu().item()
 
-            metrics["loss"].append(loss_value)
+            metrics["loss"] += loss_value
 
             for key, val in loss_dict.items():
                 metrics[key] += val.detach().cpu().item()
@@ -234,7 +234,7 @@ def main(args):
 
                 for name, metric in metrics.items():
                     avg_metric = metric.mean()
-                    metric_str += f" || {name} [{metric[-1]:.4f} ({avg_metric:.4f})]"
+                    metric_str += f" || {name} [{metric.value:.4f} ({avg_metric:.4f})]"
                     logger.add_scalar(name, avg_metric, global_step=global_step)
 
                 logging.info(metric_str)

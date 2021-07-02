@@ -14,7 +14,7 @@ weights:
 
 # DATA
 data_dir: oai/v00/data/inputs
-anns_dir: oai/v00/data/moaks
+anns_dir: meniscaltears/data
 
 # TRAINING HPARAMS
 num_epochs: 500
