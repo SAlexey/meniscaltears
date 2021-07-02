@@ -18,10 +18,9 @@ from torch import nn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from data import transforms as T
-from data.oai import (
-    MOAKSDatasetBinaryMultilabel,
-)
+from data.oai import MOAKSDataset
 from util.box_ops import box_cxcywh_to_xyxy, generalized_box_iou
+from util.misc import SmoothedValue
 
 
 def _set_random_seed(seed):
@@ -133,9 +132,10 @@ def main(args):
 
     val_transforms = T.Compose([T.ToTensor(), T.Normalize()])
 
-    dataset_train = MOAKSDatasetBinaryMultilabel(
+    dataset_train = MOAKSDataset(
         data_dir,
         anns_dir / "train.json",
+        multilabel=True,
         transforms=train_transforms,
     )
     # limit number of training images
@@ -147,9 +147,10 @@ def main(args):
         num_workers=args.num_workers,
     )
 
-    dataset_val = MOAKSDatasetBinaryMultilabel(
+    dataset_val = MOAKSDataset(
         data_dir,
         anns_dir / "val.json",
+        multilabel=True,
         transforms=val_transforms,
     )
     # limit number of val images
@@ -180,12 +181,12 @@ def main(args):
     start = state["start"]
     best_val_loss = state["best_val_loss"]
 
-    metrics = defaultdict(lambda: deque([], maxlen=window))
+    metrics = defaultdict(lambda: SmoothedValue(window=args.window))
 
     train_steps = ceil(len(dataset_train) / dataloader_train.batch_size)
     val_steps = ceil(len(dataset_val) / dataloader_val.batch_size)
 
-    postprocess = lambda out: {"labels": out["labels"], "boxes": out["boxes"].sigmoid()} 
+    postprocess = lambda out: {"labels": out["labels"], "boxes": out["boxes"].sigmoid()}
     logger = SummaryWriter()
     logging.info(f"Startinng training Epoch {start} ({time.strftime('%H:%M:%S')})")
     for epoch in range(start, epochs):
@@ -223,7 +224,7 @@ def main(args):
             metrics["loss"].append(loss_value)
 
             for key, val in loss_dict.items():
-                metrics[key].append(val.detach().cpu().item())
+                metrics[key] += val.detach().cpu().item()
 
             if step and (step % window == 0):
 
@@ -232,7 +233,7 @@ def main(args):
                 metric_str = f"Epoch [{epoch:03d} / {epochs:03d}] || Step [{step:6d}] ||  Time [{step_time:0.3f} ({total_time / total_steps:.3f})] || lr [{lr:.5f}]"
 
                 for name, metric in metrics.items():
-                    avg_metric = np.mean(metric)
+                    avg_metric = metric.mean()
                     metric_str += f" || {name} [{metric[-1]:.4f} ({avg_metric:.4f})]"
                     logger.add_scalar(name, avg_metric, global_step=global_step)
 

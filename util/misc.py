@@ -42,6 +42,10 @@ class SmoothedValue(object):
         initial = [] if initial is None else [initial]
         self.values = deque(initial, maxlen=window)
 
+    @property
+    def value(self):
+        return self.values[-1]
+
     def max(self, if_empty=None):
         if len(self.values):
             return max(self.values)
@@ -67,6 +71,7 @@ class SmoothedValue(object):
 
     def __iadd__(self, value):
         self.add(value)
+        return self
 
 
 class DCMSeriesReader(object):
