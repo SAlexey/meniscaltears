@@ -139,14 +139,6 @@ class MOAKSDataset(DatasetBase):
         return input, target
 
 
-ds = MOAKSDataset(
-    "/scratch/visual/ashestak/oai/v00/data/inputs",
-    "/scratch/visual/ashestak/meniscaltears/data/train.json",
-    multilabel=True,
-)
-#%%
-
-
 class DICOMDataset(DatasetBase):
     reader = sitk.ImageSeriesReader()
 
