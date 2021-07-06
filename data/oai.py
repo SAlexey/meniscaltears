@@ -101,12 +101,12 @@ class MOAKSDataset(DatasetBase):
                     ],
                 ]
             else:
-                labels = [ann.get("LAT", 0), ann.get("MED", 0)]
+                labels = [[ann.get("LAT", 0)], [ann.get("MED", 0)]]
 
             labels = np.nan_to_num(np.asarray(labels, dtype=np.float32))
 
             if binary:
-                labels = (labels > 1).astype(float)
+                labels = (labels >= 1).astype(float)
                 self.pos_weight += labels
 
             target["labels"] = labels

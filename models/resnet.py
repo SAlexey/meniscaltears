@@ -2,27 +2,25 @@ from functools import partial
 from einops.einops import rearrange
 import torch
 from torch import nn
+from torch._C import Value
 from torch.tensor import Tensor
 from torchvision.models.resnet import ResNet, BasicBlock
 from torchvision import models
 from torchvision.models._utils import IntermediateLayerGetter
-from typing import Callable, List, Optional
+from typing import Type, Any, Callable, Union, List, Optional
+import torch.nn.functional as F
+import einops as E
+from einops.layers.torch import Rearrange
 from .linear import MLP
+from omegaconf import DictConfig
 import os
-import warnings
 
 
 def _get_hub_dir():
-    # SCRATCH_ROOT set in conda environmment
-    # /scratch/htc on z1
-    # /scratch/visual else
     return os.path.join(os.environ["SCRATCH_ROOT"], "torchhub")
 
 
-try:
-    torch.hub.set_dir(_get_hub_dir())
-except KeyError:
-    warnings.warn("Cannot set hub dir, will download models to /home/ direcotry")
+torch.hub.set_dir(_get_hub_dir())
 
 
 def conv3x3x3(
@@ -138,6 +136,8 @@ class Bottleneck3D(nn.Module):
 def resnet18_3d(*, block=BasicBlock3D, norm_layer=nn.BatchNorm3d, **kwargs) -> ResNet:
     return ResNet3D(block, [2, 2, 2, 2], norm_layer=norm_layer, **kwargs)
 
+def resnet34_3d(*,  block=BasicBlock3D, norm_layer=nn.BatchNorm3d, **kwargs) -> ResNet:
+    return ResNet3D(block, [3, 4,  6, 3], norm_layer=norm_layer, **kwargs)
 
 def resnet50_3d(*, block=Bottleneck3D, norm_layer=nn.BatchNorm3d, **kwargs) -> ResNet:
     return ResNet3D(block, [3, 4, 6, 3], norm_layer=norm_layer, **kwargs)
@@ -281,7 +281,6 @@ class ResNet3D(nn.Module):
 
 
 def _grayscale_resnet(name, *args, **kwargs):
-    # take the mean across the channel dim on the first conv layer
     resnet = getattr(models, name)(*args, **kwargs)
     old_conv1 = resnet.conv1
 
@@ -303,10 +302,100 @@ def _grayscale_resnet(name, *args, **kwargs):
 
 CONFIG = {
     "resnet18": (partial(_grayscale_resnet, "resnet18"), 512),
+    "resnet34": (partial(_grayscale_resnet, "resnet34"), 512),
     "resnet50": (partial(_grayscale_resnet, "resnet50"), 2048),
     "resnet18_3d": (resnet18_3d, 512),
+    "resnet34_3d": (resnet34_3d, 512),
     "resnet50_3d": (resnet50_3d, 2048),
 }
+
+
+class Net1(nn.Module):
+    """
+    Detects 2 Binary Labels:
+        - medial meniscus [healthy / diseased]
+        - lateral meniscus [healthy / diseased]
+    """
+
+    def __init__(
+        self,
+        backbone: str,
+        *args,
+        hidden_dim=1024,
+        output_dim=6,
+        num_layers=1,
+        **kwargs,
+    ):
+        """
+        Args:
+            backbone: (string)
+                which backbone  to use. Choices are (resnet18_3d, resnet50_3d)
+            hidden_dim: (int)
+                dimmension of the MLP
+            output_dim: (int)
+                dimension of the output logits of MLP
+            num_layers: (int)
+                number of layers in the MLP
+        """
+
+        assert backbone in CONFIG, f"unknown backbone: {backbone}"
+        super().__init__()
+        init, num_channels = CONFIG[backbone]
+        self.backbone = init(*args, **kwargs)
+        self.out_labels = MLP(
+            input_dim=num_channels,
+            hidden_dim=hidden_dim,
+            output_dim=output_dim,
+            num_layers=num_layers,
+        )
+
+    def forward(self, x):
+        x = self.backbone(x)
+        x = self.out_labels(x)
+        return {"labels": x}
+
+
+class Net2(Net1):
+    """
+    Detects menisci and classifies them in a multilabel & multiclass manner (MOAKS)
+
+    Outputs: a dictionary with keys
+        - boxes: tensor[12] box coordinates in cxcywh format
+    """
+
+    def __init__(
+        self,
+        backbone: str,
+        *args,
+        hidden_dim=1024,
+        output_dim=6,
+        num_layers=1,
+        det_hidden_dim=1024,
+        det_output_dim=12,
+        det_num_layers=3,
+        **kwargs,
+    ):
+        assert backbone in CONFIG, f"unknown backbone: {backbone}"
+        super().__init__(
+            backbone,
+            *args,
+            hidden_dim=hidden_dim,
+            output_dim=output_dim,
+            num_layers=num_layers,
+            **kwargs,
+        )
+
+        self.out_boxes = MLP(
+            input_dim=CONFIG[backbone][1],
+            hidden_dim=det_hidden_dim,
+            output_dim=det_output_dim,
+            num_layers=det_num_layers,
+        )
+
+    def forward(self, x):
+        x = self.backbone(x)
+        out = {"labels": self.out_labels(x), "boxes": self.out_boxes(x)}
+        return out
 
 
 class ClsNet2D(nn.Module):
@@ -341,6 +430,7 @@ class ClsNet2D(nn.Module):
         backbone = backbone(*args, **kwargs)
         self.backbone = IntermediateLayerGetter(backbone, {"layer4": "features"})
         self.feature_pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.batch_pool = nn.AdaptiveMaxPool1d(1)
         self.dropout = nn.Dropout(p=dropout)
 
         self.out_cls = MLP(
@@ -355,8 +445,9 @@ class ClsNet2D(nn.Module):
         x = rearrange(x, "bs ch d h w -> (bs d) ch h w")
         x = self.backbone(x)["features"]
         x = self.feature_pool(x)
-        x = torch.max(x, dim=0, keepdim=True).values.view(1, -1)
-        x = rearrange(x, "bs ch h w -> bs  (ch h w)")
+        x = rearrange(x, "bs c h w  -> c (h w) bs")
+        x = self.batch_pool(x)
+        x = rearrange(x, "c hw bs -> bs (c hw)")
         x = self.dropout(x)
         out = {"labels": self.out_cls(x)}
         if return_features:
@@ -386,7 +477,7 @@ class DetNet2D(ClsNet2D):
         *args,
         det_output_dim=12,
         det_hidden_dim=2048,
-        det_num_layers=3,
+        det_num_layers=2,
         det_dropout=0.0,
         **kwargs,
     ):
@@ -420,7 +511,7 @@ class ClsNet3D(nn.Module):
         **kwargs,
     ):
         super().__init__()
-        assert backbone in CONFIG
+        assert backbone in CONFIG 
 
         backbone, num_channels = CONFIG[backbone]
         self.backbone = backbone(*args, **kwargs)
@@ -447,7 +538,7 @@ class DetNet3D(ClsNet3D):
         *args,
         det_hidden_dim=2048,
         det_output_dim=12,
-        det_num_layers=3,
+        det_num_layers=2,
         det_dropout=0.0,
         **kwargs,
     ):

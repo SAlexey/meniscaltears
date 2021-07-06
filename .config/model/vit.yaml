@@ -1,9 +1,10 @@
 _target_: models.vit.ViT
-num_classes: 3
 image_size:  [160, 384, 384]
-patch_size: [16, 32, 32]
-dim: 512
+patch_size: [1, 384, 384]
+dim: 1024
 depth: 6 
 heads: 8 
 mlp_dim: 1024
 dropout: 0.5
+cls_out: 2
+box_out: 12

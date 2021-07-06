@@ -7,7 +7,7 @@ from einops.layers.torch import Rearrange
 from torchvision.models._utils import IntermediateLayerGetter
 
 from .linear import MLP
-
+from hydra.utils import instantiate
 # helpers
 
 
@@ -111,7 +111,6 @@ class ViT(nn.Module):
         *,
         image_size,
         patch_size,
-        num_classes,
         dim,
         depth,
         heads,
@@ -120,7 +119,9 @@ class ViT(nn.Module):
         channels=1,
         dim_head=64,
         dropout=0.0,
-        emb_dropout=0.0
+        emb_dropout=0.0,
+        cls_out:int=2,
+        box_out:int=12
     ):
         super().__init__()
         image_depth, image_height, image_width = image_size
@@ -168,8 +169,8 @@ class ViT(nn.Module):
         self.pool = pool
         self.to_latent = nn.Identity()
 
-        self.mlp_cls = nn.Sequential(nn.LayerNorm(dim), nn.Linear(dim, num_classes))
-        self.mlp_box = MLP(dim, dim, 6, 3)
+        self.mlp_cls = nn.Sequential(nn.LayerNorm(dim), MLP(dim, dim, cls_out, num_layers=3, dropout=0.5))
+        self.mlp_box = nn.Sequential(nn.LayerNorm(dim), MLP(dim, dim, box_out, num_layers=3, dropout=0.5))
 
     def forward(self, img):
         x = self.to_patch_embedding(img)
@@ -182,10 +183,13 @@ class ViT(nn.Module):
 
         x = self.transformer(x)
 
-        x = x.mean(dim=1) if self.pool == "mean" else x[:, :2]
+        #x = x.mean(dim=1) if self.pool == "mean" else x[:, 2]
+
+        cls_token = x[:, 1]
+        box_token = x[:, 2]
 
         x = self.to_latent(x)
-        out = {"labels": self.mlp_cls(x), "boxes": self.mlp_box(x)}
+        out = {"labels": self.mlp_cls(cls_token), "boxes": self.mlp_box(box_token)}
         return out
 
 
@@ -195,7 +199,6 @@ class ViT2(nn.Module):
         *,
         backbone,
         backbone_dim,
-        num_classes,
         dim,
         depth,
         heads,
@@ -203,7 +206,9 @@ class ViT2(nn.Module):
         pool="cls",
         dim_head=64,
         dropout=0.0,
-        emb_dropout=0.0
+        emb_dropout=0.0,
+        cls_out:int=2,
+        box_out:int=12,
     ):
         super().__init__()
         self.backbone = IntermediateLayerGetter(backbone, {"avgpool": "features"})
@@ -215,8 +220,8 @@ class ViT2(nn.Module):
 
         self.to_patch_embedding = (nn.Linear(num_channels, dim),)
 
-        self.pos_embedding = nn.Parameter(torch.randn(1, num_channels + 2, dim))
-        self.cls_token = nn.Parameter(torch.randn(1, 2, dim))
+        self.pos_embedding = nn.Parameter(torch.randn(1, num_channels + 1, dim))
+        self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
         self.dropout = nn.Dropout(emb_dropout)
 
         self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
@@ -224,7 +229,8 @@ class ViT2(nn.Module):
         self.pool = pool
         self.to_latent = nn.Identity()
 
-        self.mlp_head = nn.Sequential(nn.LayerNorm(dim), nn.Linear(dim, num_classes))
+        self.mlp_cls = nn.Sequential(nn.LayerNorm(dim), nn.Linear(dim, cls_out))
+        self.mlp_box = nn.Sequential(nn.LayerNorm(dim), MLP())
 
     def forward(self, img):
         x = self.to_patch_embedding(img)
@@ -237,7 +243,7 @@ class ViT2(nn.Module):
 
         x = self.transformer(x)
 
-        x = x.mean(dim=1) if self.pool == "mean" else x[:, :2]
+        x = x.mean(dim=1) if self.pool == "mean" else x[:, :1]
 
         x = self.to_latent(x)
         out = {"labels": self.mlp_head(x)}

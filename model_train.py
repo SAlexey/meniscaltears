@@ -21,7 +21,7 @@ from data import transforms as T
 from data.oai import MOAKSDataset
 from util.box_ops import box_cxcywh_to_xyxy, generalized_box_iou
 from util.misc import SmoothedValue
-
+from einops import rearrange
 
 def _set_random_seed(seed):
     torch.manual_seed(seed)
@@ -81,7 +81,7 @@ class MixCriterion(nn.Module):
         if return_interm_losses:
             return loss, losses
 
-        return losses
+        return loss
 
 
 def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
@@ -135,7 +135,7 @@ def main(args):
     dataset_train = MOAKSDataset(
         data_dir,
         anns_dir / "train.json",
-        multilabel=True,
+        multilabel=args.multilabel,
         transforms=train_transforms,
     )
     # limit number of training images
@@ -150,7 +150,7 @@ def main(args):
     dataset_val = MOAKSDataset(
         data_dir,
         anns_dir / "val.json",
-        multilabel=True,
+        multilabel=args.multilabel,
         transforms=val_transforms,
     )
     # limit number of val images
@@ -186,7 +186,10 @@ def main(args):
     train_steps = ceil(len(dataset_train) / dataloader_train.batch_size)
     val_steps = ceil(len(dataset_val) / dataloader_val.batch_size)
 
-    postprocess = lambda out: {"labels": out["labels"], "boxes": out["boxes"].sigmoid()}
+    postprocess = lambda out: {
+            "labels": rearrange(out["labels"], "bs (obj l) -> bs obj l", obj=2), 
+            "boxes": rearrange(out["boxes"].sigmoid(), "bs (obj box) -> bs obj box", obj=2)
+    }
     logger = SummaryWriter()
     logging.info(f"Startinng training Epoch {start} ({time.strftime('%H:%M:%S')})")
     for epoch in range(start, epochs):
@@ -210,7 +213,6 @@ def main(args):
 
             if postprocess is not None:
                 out = postprocess(out)
-
             loss, loss_dict = criterion(out, tgt, pos_weight=pos_weight)
 
             optimizer.zero_grad()

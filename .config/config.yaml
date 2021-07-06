@@ -2,25 +2,26 @@ defaults:
   - model: vit
 
 # MODEL
-device: cpu
+device: cuda
 checkpoint: false
 state_dict: false 
 
 # CRITERION
 weights: 
-  labels: 1
-  boxes: 5 
-  giou: 2
+  labels: 2
+  boxes: 2
+  giou: 1
 
 # DATA
 data_dir: oai/v00/data/inputs
 anns_dir: meniscaltears/data
+multilabel: False 
 
 # TRAINING HPARAMS
 num_epochs: 500
 num_workers: 8
-batch_size: 1
-lr: 0.001
+batch_size: 8
+lr: 0.01
 lr_drop_step: 50
 lr_drop_rate: 0.5
-window: 50
+window: 20
