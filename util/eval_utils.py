@@ -1,9 +1,31 @@
+#%%
+from functools import wraps
 import numpy as np
 from sklearn import metrics
 import torch
 import scipy
 
 
+def pick(key):
+    def inner_function(function):
+        @wraps(function)
+        def wrapper(*args, **kwargs):
+            func_args = (arg[key] for arg in args)
+            function(*func_args, **kwargs)
+        return wrapper
+    return inner_function
+
+
+@pick("labels")
+def heyhoo(out, tgt):
+    print(out)
+    print(tgt)
+
+
+heyhoo({"labels": 1, "boxes": 2}, {"labels": 3, "boxes": 4})
+
+
+#%%
 def recall_iou_curve(ious, num_thresholds=25):
     thresholds = torch.linspace(0.5, 1.0, num_thresholds)
     detections = (ious >= thresholds[:, None]).to(int)
@@ -79,18 +101,23 @@ def evaluate_scores(scores: torch.Tensor, targets: torch.Tensor):
         "precision": prec,
         "recall": rec,
         "thresholds": thresholds,
-        "auc": metrics.precision_score(targets, (scores >= decision).long()),
         "auc@0.5": metrics.precision_score(targets, (scores >= 0.5).long()),
+        "auc@db": metrics.precision_score(targets, (scores >= decision).long()),
     }
 
     evaluation["decision_boundary"] = decision
 
-    predictions = (scores >= decision).to(int)
+    predictions_05 = (scores >= 0.5).to(int)
+    predictions_db = (scores >= decision).to(int)
 
-    evaluation["confusion_matrix"] = metrics.confusion_matrix(targets, predictions)
-    evaluation["balanced_accuracy"] = metrics.balanced_accuracy_score(
-        targets, predictions
-    )
+    evaluation["confusion_matrix"] = {
+        "@0.5": metrics.confusion_matrix(targets, predictions_05),
+        "@db": metrics.confusion_matrix(targets, predictions_db),
+    }
+    evaluation["balanced_accuracy"] = {
+        "@0.5": metrics.balanced_accuracy_score(targets, predictions_05),
+        "@db": metrics.balanced_accuracy_score(targets, predictions_db),
+    }
     return evaluation
 
 
