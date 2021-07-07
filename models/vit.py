@@ -193,7 +193,7 @@ class ViT(nn.Module):
         return out
 
 
-class ViT2(nn.Module):
+class ResViT(nn.Module):
     def __init__(
         self,
         *,
@@ -207,8 +207,6 @@ class ViT2(nn.Module):
         dim_head=64,
         dropout=0.0,
         emb_dropout=0.0,
-        cls_out:int=2,
-        box_out:int=12,
     ):
         super().__init__()
         self.backbone = IntermediateLayerGetter(backbone, {"avgpool": "features"})

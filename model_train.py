@@ -1,5 +1,13 @@
 # %%
 
+from util.eval_utils import (
+    balanced_accuracy_score,
+    confusion_matrix,
+    precision_recall_curve,
+    roc_auc_score,
+    roc_curve,
+)
+from engine import evaluate, train
 import json
 import logging
 import os
@@ -13,7 +21,7 @@ import hydra
 import numpy as np
 import torch
 import torch.nn.functional as F
-from hydra.utils import instantiate, to_absolute_path
+from hydra.utils import instantiate, to_absolute_path, call
 from torch import nn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -22,6 +30,7 @@ from data.oai import MOAKSDataset
 from util.box_ops import box_cxcywh_to_xyxy, generalized_box_iou
 from util.misc import SmoothedValue
 from einops import rearrange
+
 
 def _set_random_seed(seed):
     torch.manual_seed(seed)
@@ -139,7 +148,9 @@ def main(args):
         transforms=train_transforms,
     )
     # limit number of training images
-    # dataset_train.keys = dataset_train.keys[:1]
+    if args.limit_train_items:
+        dataset_train.anns = dataset_train.anns[: args.limit_train_items]
+
     dataloader_train = DataLoader(
         dataset_train,
         shuffle=True,
@@ -154,7 +165,10 @@ def main(args):
         transforms=val_transforms,
     )
     # limit number of val images
-    # dataset_val.keys = dataset_val.keys[:1]
+
+    if args.limit_val_items:
+        dataset_val.anns = dataset_val.anns[: args.limit_val_items]
+
     dataloader_val = DataLoader(
         dataset_val,
         shuffle=False,
@@ -175,127 +189,100 @@ def main(args):
         optimizer, args.lr_drop_step, args.lr_drop_rate
     )
     epochs = args.num_epochs
-    window = args.window
 
     state = _load_state(args, model, optimizer, scheduler)
     start = state["start"]
     best_val_loss = state["best_val_loss"]
 
-    metrics = defaultdict(lambda: SmoothedValue(window=args.window))
-
-    train_steps = ceil(len(dataset_train) / dataloader_train.batch_size)
-    val_steps = ceil(len(dataset_val) / dataloader_val.batch_size)
+    metrics = {
+        "balanced_accuracy": balanced_accuracy_score,
+        "roc_curve": roc_curve,
+        "roc_auc_score": roc_auc_score,
+        "precision_recall_curve": precision_recall_curve,
+        "confusion_matrix": confusion_matrix,
+    }
 
     postprocess = lambda out: {
-            "labels": rearrange(out["labels"], "bs (obj l) -> bs obj l", obj=2), 
-            "boxes": rearrange(out["boxes"].sigmoid(), "bs (obj box) -> bs obj box", obj=2)
+        "labels": rearrange(out["labels"], "bs (obj l) -> bs obj l", obj=2),
+        "boxes": rearrange(out["boxes"].sigmoid(), "bs (obj box) -> bs obj box", obj=2),
     }
-    logger = SummaryWriter()
-    logging.info(f"Startinng training Epoch {start} ({time.strftime('%H:%M:%S')})")
-    for epoch in range(start, epochs):
 
-        total_loss = 0
-        total_steps = 0
-        total_time = 0
+    if args.eval:
+
+        logging.info("Running evaluation on the test set")
+
+        dataset = MOAKSDataset(
+            data_dir,
+            anns_dir / "test.json",
+            binary=args.binary,
+            multilabel=args.multilabel,
+            transforms=val_transforms,
+        )
+
+        loader = DataLoader(
+            dataset, shuffle=False, batch_size=1, num_workers=args.num_workers
+        )
+
+        eval_results = evaluate(model, loader, **metrics)
+
+        torch.save(eval_results, "test_results.pt")
+
+    # start training
+    logging.info(f"Startinng training epoch {start} ({time.strftime('%H:%M:%S')})")
+    for epoch in range(start, epochs):
 
         pos_weight = dataloader_train.dataset.pos_weight
         if isinstance(pos_weight, torch.Tensor):
             pos_weight = pos_weight.to(device)
-        model.train()
-        for step, (img, tgt) in enumerate(dataloader_train):
-            img = img.to(device)
-            tgt = {k: v.to(device).float() for k, v in tgt.items()}
 
-            global_step = step + epoch * train_steps
-
-            t0 = time.time()
-            out = model(img)
-
-            if postprocess is not None:
-                out = postprocess(out)
-            loss, loss_dict = criterion(out, tgt, pos_weight=pos_weight)
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            step_time = time.time() - t0
-            total_time += step_time
-
-            loss_value = loss.detach().cpu().item()
-
-            metrics["loss"] += loss_value
-
-            for key, val in loss_dict.items():
-                metrics[key] += val.detach().cpu().item()
-
-            if step and (step % window == 0):
-
-                lr = optimizer.param_groups[0].get("lr")
-
-                metric_str = f"Epoch [{epoch:03d} / {epochs:03d}] || Step [{step:6d}] ||  Time [{total_time:0.3f} ({total_time / total_steps:.3f})] || lr [{lr:.5f}]"
-
-                for name, metric in metrics.items():
-                    avg_metric = metric.mean()
-                    metric_str += f" || {name} [{metric.value:.4f} ({avg_metric:.4f})]"
-                    logger.add_scalar(name, avg_metric, global_step=global_step)
-
-                logging.info(metric_str)
-
-            total_loss += loss_value
-            total_steps += 1
-
-        logger.add_scalar(
-            "train_loss_epoch", total_loss / total_steps, global_step=epoch
+        train_results = train(
+            model,
+            dataloader_train,
+            optimizer,
+            criterion,
+            criterion_kwargs={"pos_weight": pos_weight},
+            postprocess=postprocess,
+            window=args.window,
+            epoch=epoch,
         )
 
-        with torch.no_grad():
+        epoch_time = train_results["total_time"]
+        epoch_loss = train_results["total_loss"] / train_results["total_steps"]
+        step_time = epoch_time / train_results["total_steps"]
 
-            model.eval()
+        logging.info(
+            f"epoch [{epoch:04d} / {epochs:04d}] | training loss [{epoch_loss:.4f}] | trainig time [{epoch_time:.2f} ({step_time:.3f})]"
+        )
 
-            total_loss = 0
-            total_steps = 0
-            total_time = 0
+        pos_weight = dataloader_val.dataset.pos_weight
+        if isinstance(pos_weight, torch.Tensor):
+            pos_weight = pos_weight.to(device)
 
-            pos_weight = dataloader_val.dataset.pos_weight
-            if isinstance(pos_weight, torch.Tensor):
-                pos_weight = pos_weight.to(device)
+        eval_results = evaluate(
+            model,
+            dataloader_val,
+            criterion,
+            criterion_kwargs={"pos_weight": pos_weight},
+            postprocess=postprocess,
+            **metrics,
+        )
 
-            for step, (img, tgt) in enumerate(dataloader_val):
-                img = img.to(device)
-                tgt = {k: v.to(device).float() for k, v in tgt.items()}
+        epoch_time = eval_results["total_time"]
+        epoch_loss = eval_results["total_loss"] / eval_results["total_steps"]
+        step_time = epoch_time / eval_results["total_steps"]
 
-                global_step = step + epoch * val_steps
-                t0 = time.time()
+        logging.info(
+            f"epoch [{epoch:04d} / {epochs:04d}] | validation Loss {epoch_loss:.4f} | inference time [{epoch_time:.2f} ({step_time:.3f})]"
+        )
 
-                out = model(img)
+        if epoch_loss < best_val_loss:
+            best_val_loss = epoch_loss
 
-                if postprocess is not None:
-                    out = postprocess(out)
+            torch.save(model.state_dict(), "best_model.pt")
+            torch.save(eval_results, "best_model_eval_results.ps")
 
-                total_time += step_time
-                loss = criterion(
-                    out, tgt, return_interm_losses=False, pos_weight=pos_weight
-                )
-
-                loss_value = loss.detach().cpu().item()
-
-                total_loss += loss_value
-                total_steps += 1
-
-            epoch_loss = total_loss / total_steps
-
-            metric_str = f"Epoch [{epoch:03d} / {epochs:03d}] || Step [{total_steps:5d}] || Time [{total_time:.2f} ({total_time / total_steps:.2f})] || Validation loss [{epoch_loss:.4f}]"
-
-            logging.info(metric_str)
-            logger.add_scalar("val_loss_epoch", epoch_loss, global_step=epoch)
-
-            if epoch_loss < best_val_loss:
-                best_val_loss = epoch_loss
-
-                torch.save(model.state_dict(), "best_model.pt")
-
-                with open("best_model.json", "w") as fh:
-                    json.dump({"epoch": epoch, "val_loss": best_val_loss}, fh)
+            with open("best_model.json", "w") as fh:
+                json.dump({"epoch": epoch, "val_loss": best_val_loss}, fh)
 
         scheduler.step()
 
@@ -310,10 +297,6 @@ def main(args):
                 },
                 "checkpoint.ckpt",
             )
-
-        if time.strftime("%H:%M") == "18:00":
-            logging.info("Exitting due to time constraint")
-            quit()
 
 
 if __name__ == "__main__":

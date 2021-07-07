@@ -12,17 +12,98 @@ def pick(key):
         def wrapper(*args, **kwargs):
             func_args = (arg[key] for arg in args)
             function(*func_args, **kwargs)
+
         return wrapper
+
     return inner_function
 
 
+def _align(y_true, y_pred, names=None):
+
+    assert y_true.shape == y_pred.shape
+    if isinstance(names, str):
+        names = ("names",)
+
+    if y_true.ndim == 1:
+        y_true = y_true.view(-1, 1)
+        y_pred = y_pred.view(-1, 1)
+
+    y_true = y_true.flatten(1)
+    y_pred = y_pred.flatten(1)
+
+    if names is None:
+        names = list(range(y_true.size(1)))
+    else:
+        assert len(names) == y_true.size(1)
+
+    return y_true, y_pred, names
+
+
 @pick("labels")
-def heyhoo(out, tgt):
-    print(out)
-    print(tgt)
+def roc_curve(y_true, y_score, *, names=None, **kwargs):
+
+    roc = {}
+    y_true, y_score, names = _align(y_true, y_score, names)
+
+    for yt, ys, n in zip(y_true.unbind(-1), y_score.unbind(-1), names):
+        roc[n] = metrics.roc_curve(yt, ys, **kwargs)
+
+    return roc
 
 
-heyhoo({"labels": 1, "boxes": 2}, {"labels": 3, "boxes": 4})
+@pick("labels")
+def roc_auc_score(y_true, y_score, *, names=None, **kwargs):
+    roc_auc = {}
+
+    y_true, y_score, names = _align(y_true, y_score, names)
+
+    for yt, ys, n in zip(y_true.unbind(-1), y_score.unbind(-1), names):
+        roc_auc[n] = metrics.roc_auc_score(yt, ys, **kwargs)
+
+    return roc_auc
+
+
+@pick("labels")
+def precision_recall_curve(y_true, y_score, *, names=None, **kwargs):
+    pr_curve = {}
+
+    y_true, y_score, names = _align(y_true, y_score, names)
+
+    for yt, ys, n in zip(y_true.unbind(-1), y_score.unbind(-1), names):
+        pr_curve[n] = metrics.precision_recall_curve(yt, ys, **kwargs)
+
+    return pr_curve
+
+
+@pick("labels")
+def balanced_accuracy_score(y_true, y_score, *, names=None, threshold=0.5, **kwargs):
+
+    balanced_accuracy = {}
+
+    y_score = (y_score >= threshold).to(int)
+    y_true = y_true.to(int)
+
+    y_true, y_score, names = _align(y_true, y_score, names)
+
+    for yt, ys, n in zip(y_true.unbind(-1), y_score.unbind(-1), names):
+        balanced_accuracy[n] = metrics.balanced_accuracy_score(yt, ys, **kwargs)
+
+    return balanced_accuracy
+
+
+@pick("labels")
+def confusion_matrix(y_true, y_score, *, names=None, threshold=0.5, **kwargs):
+    cm = {}
+
+    y_score = (y_score >= threshold).to(int)
+    y_true = y_true.to(int)
+
+    y_true, y_score, names = _align(y_true, y_score, names)
+
+    for yt, ys, n in zip(y_true.unbind(-1), y_score.unbind(-1), names):
+        cm[n] = metrics.confusion_matrix(yt, ys, **kwargs)
+
+    return cm
 
 
 #%%
@@ -34,7 +115,6 @@ def recall_iou_curve(ious, num_thresholds=25):
 
     recalls = [metrics.recall_score(y_true, y_pred) for y_pred in detections]
     recalls = torch.as_tensor(recalls)
-
     return recalls, thresholds
 
 

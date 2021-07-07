@@ -5,6 +5,9 @@ import numpy as np
 import SimpleITK as sitk
 import torch
 from pathlib import Path
+from collections import defaultdict
+from typing import Dict, Optional, Sequence, Tuple, Union
+from einops.einops import rearrange
 
 
 def save_as_nifty(arr, name):
@@ -37,6 +40,74 @@ def _is_numeric(obj):
         return False
 
 
+def _reduce(s: Sequence[Dict[str, torch.Tensor]]):
+    """
+    Convert a sequence of dictionaries containing tensors
+    to a dictionary of tensors where the tensors are
+    a result of concatenation
+
+
+    Example:
+
+        s = [
+            {"k0": tensor([[1,2,3]]), "k1": tensor([[2, 5]])},
+            {"k0": tensor([[1,2,3]]), "k1": tensor([[2, 5]])},
+            {"k0": tensor([[1,2,3]]), "k1": tensor([[2, 5]])},
+        ]
+
+        output = _reduce(s)
+
+        output:
+            {
+                "k0": tensor([
+                    [1, 2, 3],
+                    [1, 2, 3],
+                    [1, 2, 3],
+                ]),
+                "k1": tensor([
+                     [2, 5],
+                     [2, 5],
+                     [2, 5],
+                ])
+            }
+
+    """
+
+    result = defaultdict(list)
+
+    for collection in s:
+
+        for key, value in collection.items():
+            if value.ndim < 2:
+                result[key].append(value)
+            else:
+                # assuming every value is of shape (BS, *) [BS = batch size]
+                # where BS is variable and * is arbitrary number of dims
+                result[key].extend([item for item in value.unbind(0)])
+    for key, value in result.items():
+        pattern = "list " + " ".join((f"d{dim}" for dim in range(value[0].ndim)))
+        result[key] = rearrange(value, f"{pattern} -> {pattern}")
+
+    return result
+
+
+def _get_model_device(model):
+    return next(model.parameters()).device
+
+
+def _to_device(
+    input: torch.Tensor,
+    target: Dict[str, torch.Tensor],
+    device: Union[str, torch.device] = "cpu",
+):
+    return input.to(device), {k: v.to(device) for k, v in target.items()}
+
+
+class LoggableMixin(object):
+    def get_log(self):
+        raise NotImplementedError
+
+
 class SmoothedValue(object):
     def __init__(self, initial=None, window=20):
         initial = [] if initial is None else [initial]
@@ -44,14 +115,16 @@ class SmoothedValue(object):
 
     @property
     def value(self):
-        return self.values[-1]
+        if self.values:
+            return self.values[-1]
+        return np.nan
 
-    def max(self, if_empty=None):
+    def max(self, if_empty=np.nan):
         if len(self.values):
             return max(self.values)
         return if_empty
 
-    def mean(self, if_empty=None):
+    def mean(self, if_empty=np.nan):
         if len(self.values):
             return np.mean(self.values)
         return if_empty

@@ -2,8 +2,7 @@ from functools import partial
 from einops.einops import rearrange
 import torch
 from torch import nn
-from torch._C import Value
-from torch.tensor import Tensor
+from torch import Tensor
 from torchvision.models.resnet import ResNet, BasicBlock
 from torchvision import models
 from torchvision.models._utils import IntermediateLayerGetter
@@ -136,8 +135,10 @@ class Bottleneck3D(nn.Module):
 def resnet18_3d(*, block=BasicBlock3D, norm_layer=nn.BatchNorm3d, **kwargs) -> ResNet:
     return ResNet3D(block, [2, 2, 2, 2], norm_layer=norm_layer, **kwargs)
 
-def resnet34_3d(*,  block=BasicBlock3D, norm_layer=nn.BatchNorm3d, **kwargs) -> ResNet:
-    return ResNet3D(block, [3, 4,  6, 3], norm_layer=norm_layer, **kwargs)
+
+def resnet34_3d(*, block=BasicBlock3D, norm_layer=nn.BatchNorm3d, **kwargs) -> ResNet:
+    return ResNet3D(block, [3, 4, 6, 3], norm_layer=norm_layer, **kwargs)
+
 
 def resnet50_3d(*, block=Bottleneck3D, norm_layer=nn.BatchNorm3d, **kwargs) -> ResNet:
     return ResNet3D(block, [3, 4, 6, 3], norm_layer=norm_layer, **kwargs)
@@ -511,7 +512,7 @@ class ClsNet3D(nn.Module):
         **kwargs,
     ):
         super().__init__()
-        assert backbone in CONFIG 
+        assert backbone in CONFIG
 
         backbone, num_channels = CONFIG[backbone]
         self.backbone = backbone(*args, **kwargs)
