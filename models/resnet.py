@@ -601,7 +601,7 @@ class VidNet(nn.Module):
     def forward(self, x):
 
         x = self.backbone(x)["features"]
-        x = self.pool(x)
+        x = self.pool(x).flatten(1)
 
         labels = rearrange(self.cls_out(x), "bs (m l) -> bs m l", l=1)
         boxes = rearrange(self.box_out(x), "bs (m b) -> bs m b", b=6)
