@@ -30,6 +30,7 @@ from data.oai import MOAKSDataset
 from util.box_ops import box_cxcywh_to_xyxy, generalized_box_iou
 from util.misc import SmoothedValue
 from einops import rearrange
+import sys
 
 
 def _set_random_seed(seed):
@@ -187,14 +188,20 @@ def main(args):
 
     postprocess = lambda out: {
         "labels": rearrange(
-            out["labels"], "bs tokens (obj cls) -> bs (tokens obj) cls", cls=args.model.cls_out // 2, obj=2, tokens=args.model.cls_tokens
+            out["labels"],
+            "bs tokens (obj cls) -> bs (tokens obj) cls",
+            cls=args.model.cls_out // 2,
+            obj=2,
+            tokens=args.model.cls_tokens,
         ),
         "boxes": rearrange(
-            out["boxes"].sigmoid(), "bs tokens (obj box) -> bs (tokens obj) box", box=args.model.box_out // 2, obj=2, tokens=args.model.cls_tokens
+            out["boxes"].sigmoid(),
+            "bs tokens (obj box) -> bs (tokens obj) box",
+            box=args.model.box_out // 2,
+            obj=2,
+            tokens=args.model.cls_tokens,
         ),
     }
-
-
 
     if args.eval:
 
@@ -212,9 +219,11 @@ def main(args):
             dataset, shuffle=False, batch_size=1, num_workers=args.num_workers
         )
 
-        eval_results = evaluate(model, loader, **metrics)
+        eval_results = evaluate(model, loader, postprocess=postprocess, **metrics)
 
         torch.save(eval_results, "test_results.pt")
+        logging.info("Testing finished, exitting")
+        sys.exit(0)
 
     # start training
     logging.info(f"Startinng training epoch {start} ({time.strftime('%H:%M:%S')})")
@@ -289,7 +298,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    # args = parse_args()
     main()
 
 # %%
