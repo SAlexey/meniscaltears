@@ -583,7 +583,13 @@ class VidNet(nn.Module):
     def __init__(self):
         super().__init__()
 
-        backbone = models.video.resnet._video_resnet(stem=BasicStem)
+        backbone = models.video.resnet._video_resnet(
+            "r3d_18",
+            block=models.video.resnet.BasicBlock,
+            conv_makers=[models.video.resnet.Conv3DSimple] * 4,
+            layers=[2, 2, 2, 2],
+            stem=BasicStem,
+        )
 
         self.backbone = IntermediateLayerGetter(backbone, {"layer4": "features"})
 
