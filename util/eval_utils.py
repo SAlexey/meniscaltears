@@ -11,7 +11,7 @@ def pick(key):
         @wraps(function)
         def wrapper(*args, **kwargs):
             func_args = (arg[key] for arg in args)
-            function(*func_args, **kwargs)
+            return function(*func_args, **kwargs)
 
         return wrapper
 

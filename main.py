@@ -219,7 +219,9 @@ def main(args):
             dataset, shuffle=False, batch_size=1, num_workers=args.num_workers
         )
 
-        eval_results = evaluate(model, loader, postprocess=postprocess, **metrics)
+        eval_results = evaluate(
+            model, loader, postprocess=postprocess, progress=True, **metrics
+        )
 
         torch.save(eval_results, "test_results.pt")
         logging.info("Testing finished, exitting")
@@ -270,8 +272,26 @@ def main(args):
         step_time = epoch_time / eval_results["total_steps"]
 
         logging.info(
-            f"epoch [{epoch:04d} / {epochs:04d}] | validation Loss {epoch_loss:.4f} | inference time [{epoch_time:.2f} ({step_time:.3f})]"
+            f"epoch [{epoch:04d} / {epochs:04d}] | validation loss {epoch_loss:.4f} | inference time [{epoch_time:.2f} ({step_time:.3f})]"
         )
+
+        for metric in ("balanced_accuracy", "roc_auc_score"):
+
+            if metric in eval_results:
+
+                logs = [metric]
+
+                for name, value in eval_results[metric].items():
+
+                    logs.append(f"{name} [{value}]")
+
+                logging.info(" | ".join(logs))
+
+        if "confusion_matrix" in eval_results:
+
+            for name, value in eval_results["confusion_matrix"].items():
+                tn, fp, fn, tp = value.flatten()
+                logging.info(f"{name} TP [{tp}] | TN [{tn}] | FP [{fp}] | FN [{fn}]")
 
         if epoch_loss < best_val_loss:
             best_val_loss = epoch_loss
