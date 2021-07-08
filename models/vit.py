@@ -210,6 +210,8 @@ class ConViT(nn.Module):
         dim_head=64,
         dropout=0.0,
         emb_dropout=0.0,
+        cls_out=6,
+        box_out=12,
     ):
         super().__init__()
 
@@ -240,8 +242,8 @@ class ConViT(nn.Module):
         self.pool = pool
         self.to_latent = nn.Identity()
 
-        self.mlp_cls = nn.Sequential(nn.LayerNorm(dim), nn.Linear(dim, 6))
-        self.mlp_box = nn.Sequential(nn.LayerNorm(dim), MLP(dim, 1024, 12, 3, 0.5))
+        self.mlp_cls = nn.Sequential(nn.LayerNorm(dim), nn.Linear(dim, cls_out))
+        self.mlp_box = nn.Sequential(nn.LayerNorm(dim), MLP(dim, 1024, box_out, 3, 0.5))
 
     def forward(self, img):
         x = self.to_patch_embedding(img)

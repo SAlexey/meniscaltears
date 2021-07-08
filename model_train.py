@@ -203,8 +203,12 @@ def main(args):
     }
 
     postprocess = lambda out: {
-        "labels": rearrange(out["labels"], "bs (obj l) -> bs obj l", obj=2),
-        "boxes": rearrange(out["boxes"].sigmoid(), "bs (obj box) -> bs obj box", obj=2),
+        "labels": rearrange(
+            out["labels"], "bs (obj cls) -> bs obj cls", cls=args.cls_out
+        ),
+        "boxes": rearrange(
+            out["boxes"].sigmoid(), "bs (obj box) -> bs obj box", box=args.box_out
+        ),
     }
 
     if args.eval:
