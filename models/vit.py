@@ -116,8 +116,8 @@ class ViT(nn.Module):
         depth,
         heads,
         mlp_dim,
+        cls_tokens=1,
         pool="cls",
-        channels=1,
         dim_head=64,
         dropout=0.0,
         emb_dropout=0.0,
@@ -144,7 +144,7 @@ class ViT(nn.Module):
             * (image_height // patch_height)
             * (image_width // patch_width)
         )
-        patch_dim = channels * patch_depth * patch_height * patch_width
+        patch_dim = patch_depth * patch_height * patch_width
 
         assert pool in {
             "cls",
@@ -161,8 +161,8 @@ class ViT(nn.Module):
             nn.Linear(patch_dim, dim),
         )
 
-        self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 2, dim))
-        self.cls_token = nn.Parameter(torch.randn(1, 2, dim))
+        self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + cls_tokens, dim))
+        self.cls_token = nn.Parameter(torch.randn(1, cls_tokens, dim))
         self.dropout = nn.Dropout(emb_dropout)
 
         self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
@@ -233,7 +233,7 @@ class ConViT(nn.Module):
             Rearrange("b n d h w -> b (d h w) n"),
         )
 
-        self.pos_embedding = nn.Parameter(torch.randn(1, 0 + 1, dim))
+        self.pos_embedding = nn.Parameter(torch.randn(1, 4671 + 1, dim))
         self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
         self.dropout = nn.Dropout(emb_dropout)
 
