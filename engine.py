@@ -142,7 +142,6 @@ def train(
                 f"epoch [{epoch:04d}]",
                 f"step [{step:05d}]",
                 f"time [{step_time:.3f}]",
-                f"loss [{meters['loss'].value:.4f} ({meters['loss'].mean():.4f})]",
             ]
 
             for i, group in enumerate(optimizer.param_groups):

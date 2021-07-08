@@ -187,12 +187,14 @@ def main(args):
 
     postprocess = lambda out: {
         "labels": rearrange(
-            out["labels"], "bs (obj cls) -> bs obj cls", cls=args.cls_out
+            out["labels"], "bs tokens (obj cls) -> bs (tokens obj) cls", cls=args.model.cls_out // 2, obj=2, tokens=args.model.cls_tokens
         ),
         "boxes": rearrange(
-            out["boxes"].sigmoid(), "bs (obj box) -> bs obj box", box=args.box_out
+            out["boxes"].sigmoid(), "bs tokens (obj box) -> bs (tokens obj) box", box=args.model.box_out // 2, obj=2, tokens=args.model.cls_tokens
         ),
     }
+
+
 
     if args.eval:
 

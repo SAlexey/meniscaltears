@@ -206,6 +206,7 @@ class ConViT(nn.Module):
         depth,
         heads,
         mlp_dim,
+        cls_tokens=1,
         pool="cls",
         dim_head=64,
         dropout=0.0,
@@ -233,8 +234,8 @@ class ConViT(nn.Module):
             Rearrange("b n d h w -> b (d h w) n"),
         )
 
-        self.pos_embedding = nn.Parameter(torch.randn(1, 0 + 1, dim))
-        self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
+        self.pos_embedding = nn.Parameter(torch.randn(1, 4761 + cls_tokens, dim))
+        self.cls_token = nn.Parameter(torch.randn(1, cls_tokens, dim))
         self.dropout = nn.Dropout(emb_dropout)
 
         self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
