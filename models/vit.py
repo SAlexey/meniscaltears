@@ -190,8 +190,8 @@ class ViT(nn.Module):
 
         # x = x.mean(dim=1) if self.pool == "mean" else x[:, 2]
 
-        cls_token = x[:, 1]
-        box_token = x[:, 2]
+        cls_token = x[:, 0].view(b, 1, -1)
+        box_token = x[:, 1].view(b, 1, -1)
 
         x = self.to_latent(x)
         out = {"labels": self.mlp_cls(cls_token), "boxes": self.mlp_box(box_token)}
