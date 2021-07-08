@@ -78,7 +78,7 @@ def _reduce(s: Sequence[Dict[str, torch.Tensor]]):
     for collection in s:
 
         for key, value in collection.items():
-            if value.ndim < 2:
+            if value.ndim == 0:
                 result[key].append(value)
             else:
                 # assuming every value is of shape (BS, *) [BS = batch size]
@@ -86,7 +86,10 @@ def _reduce(s: Sequence[Dict[str, torch.Tensor]]):
                 result[key].extend([item for item in value.unbind(0)])
     for key, value in result.items():
         pattern = "list " + " ".join((f"d{dim}" for dim in range(value[0].ndim)))
-        result[key] = rearrange(value, f"{pattern} -> {pattern}")
+        try:
+            result[key] = rearrange(value, f"{pattern} -> {pattern}")
+        except:
+            print(key, value)
 
     return result
 

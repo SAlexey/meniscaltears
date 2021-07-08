@@ -2,13 +2,15 @@ defaults:
   - model: convit
 
 # MODEL
-device: cpu
+device: cuda
 checkpoint: false
 state_dict: false
 eval: false
 
-cls_out: 2
-box_out: 12
+model:
+  cls_tokens: 1
+  cls_out: 2
+  box_out: 12
 
 # CRITERION
 weights:
@@ -20,14 +22,14 @@ weights:
 data_dir: oai/v00/data/inputs
 anns_dir: meniscaltears/data
 multilabel: False
-limit_train_items: 3
-limit_val_items: 3
+limit_train_items: false
+limit_val_items: false
 
 # TRAINING HPARAMS
 num_epochs: 500
 num_workers: 8
-batch_size: 1
-lr: 0.01
+batch_size: 2
+lr: 0.001
 lr_drop_step: 50
 lr_drop_rate: 0.5
-window: 1
+window: 20

@@ -38,23 +38,6 @@ def _set_random_seed(seed):
     random.seed(seed)
 
 
-def _get_device(name):
-    device = torch.device("cpu")
-    if "cuda" in str(name):
-        if not torch.cuda.is_available():
-            logging.warning(
-                f"selected device={name}, but cuda is not available, returning device=cpu"
-            )
-            return device
-        if not os.environ["USE_CUDA"]:
-            logging.warning(
-                f"selected device={name}, but it is prohibited by the $USE_CUDA env. variable, returning device=cpu"
-            )
-            return device
-    device = torch.device(name)
-    return device
-
-
 class MixCriterion(nn.Module):
     def __init__(self, **weights):
         self.weight = weights
@@ -96,7 +79,7 @@ class MixCriterion(nn.Module):
 def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
     state_dict = {}
 
-    device = _get_device(args.device)
+    device = torch.device(args.device)
 
     if args.checkpoint:
         state_dict = torch.load(to_absolute_path(args.checkpoint), map_location=device)
@@ -176,7 +159,7 @@ def main(args):
         num_workers=args.num_workers,
     )
 
-    device = _get_device(args.device)
+    device = torch.device(args.device)
 
     model = instantiate(args.model)
 
@@ -204,12 +187,14 @@ def main(args):
 
     postprocess = lambda out: {
         "labels": rearrange(
-            out["labels"], "bs (obj cls) -> bs obj cls", cls=args.cls_out
+            out["labels"], "bs tokens (obj cls) -> bs (tokens obj) cls", cls=args.model.cls_out // 2, obj=2, tokens=args.model.cls_tokens
         ),
         "boxes": rearrange(
-            out["boxes"].sigmoid(), "bs (obj box) -> bs obj box", box=args.box_out
+            out["boxes"].sigmoid(), "bs tokens (obj box) -> bs (tokens obj) box", box=args.model.box_out // 2, obj=2, tokens=args.model.cls_tokens
         ),
     }
+
+
 
     if args.eval:
 
