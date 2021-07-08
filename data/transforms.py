@@ -164,7 +164,7 @@ class ToTensor(object):
 
 
 class Normalize(object):
-    def __call__(self, img, tgt=None, mean=(0.485,), std=(0.229,)):
+    def __call__(self, img, tgt=None, mean=(0,), std=(1,)):
 
         img = img / img.max()
         img = (img - torch.as_tensor(mean)) / torch.as_tensor(std)

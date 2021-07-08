@@ -111,6 +111,7 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
 @hydra.main(config_path=".config/", config_name="config")
 def main(args):
     _set_random_seed(50899)
+    
     root = Path(os.environ["SCRATCH_ROOT"])
 
     data_dir = root / args.data_dir
@@ -119,11 +120,13 @@ def main(args):
     assert data_dir.exists(), "Provided data directory doesn't exist!"
     assert anns_dir.exists(), "Provided annotations directory doesn't exist!"
 
+    normalize = T.Normalize(mean=(0.4945), std=(0.3782, ))
+
     train_transforms = T.Compose(
-        [T.ToTensor(), T.RandomResizedBBoxSafeCrop(), T.Normalize()]
+        [T.ToTensor(), T.RandomResizedBBoxSafeCrop(), normalize]
     )
 
-    val_transforms = T.Compose([T.ToTensor(), T.Normalize()])
+    val_transforms = T.Compose([T.ToTensor(), normalize])
 
     dataset_train = MOAKSDataset(
         data_dir,
@@ -230,7 +233,7 @@ def main(args):
         sys.exit(0)
 
     # start training
-    logging.info(f"Startinng training epoch {start} ({time.strftime('%H:%M:%S')})")
+    logging.info(f"Starting training epoch {start} ({time.strftime('%H:%M:%S')})")
     for epoch in range(start, epochs):
 
         pos_weight = dataloader_train.dataset.pos_weight
