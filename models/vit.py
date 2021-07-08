@@ -243,7 +243,7 @@ class ConViT(nn.Module):
         self.pool = pool
         self.to_latent = nn.Identity()
 
-        self.mlp_cls = nn.Sequential(nn.LayerNorm(dim), nn.Linear(dim, cls_out))
+        self.mlp_cls = nn.Sequential(nn.LayerNorm(dim), MLP(dim, 1024, cls_out, 3, 0.5))
         self.mlp_box = nn.Sequential(nn.LayerNorm(dim), MLP(dim, 1024, box_out, 3, 0.5))
 
     def forward(self, img):

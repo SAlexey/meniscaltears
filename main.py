@@ -291,7 +291,7 @@ def main(args):
 
             for name, value in eval_results["confusion_matrix"].items():
                 tn, fp, fn, tp = value.flatten()
-                logging.info(f"{name} TP [{tp}] | TN [{tn}] | FP [{fp}] | FN [{fn}]")
+                logging.info(f"confusion matrix for {name} TP [{tp}] | TN [{tn}] | FP [{fp}] | FN [{fn}]")
 
         if epoch_loss < best_val_loss:
             best_val_loss = epoch_loss
