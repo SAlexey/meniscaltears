@@ -73,7 +73,7 @@ def evaluate(
     eval_results["targets"] = targets
     eval_results["total_loss"] = total_loss
     eval_results["total_time"] = total_time
-    eval_results["total_steps"] = total_time
+    eval_results["total_steps"] = total_steps
 
     if losses:
         eval_results["losses"] = _reduce(losses)
