@@ -561,13 +561,31 @@ class DetNet3D(ClsNet3D):
         return out
 
 
+class BasicStem(nn.Sequential):
+    """The default conv-batchnorm-relu stem"""
+
+    def __init__(self):
+        super(BasicStem, self).__init__(
+            nn.Conv3d(
+                1,
+                64,
+                kernel_size=(3, 7, 7),
+                stride=(1, 2, 2),
+                padding=(1, 3, 3),
+                bias=False,
+            ),
+            nn.BatchNorm3d(64),
+            nn.ReLU(inplace=True),
+        )
+
+
 class VidNet(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.backbone = IntermediateLayerGetter(
-            models.video.r3d_18(), {"layer4": "features"}
-        )
+        backbone = models.video.resnet._video_resnet(stem=BasicStem)
+
+        self.backbone = IntermediateLayerGetter(backbone, {"layer4": "features"})
 
         self.pool = nn.AdaptiveAvgPool3d(1)
 
