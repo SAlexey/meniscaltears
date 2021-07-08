@@ -4,6 +4,7 @@ import time
 from typing import Dict, Iterable, Sequence
 import torch
 from torch import nn
+from tqdm import tqdm
 
 from util.misc import SmoothedValue, _reduce, _to_device, _get_model_device
 import logging
@@ -18,6 +19,7 @@ def evaluate(
     criterion_kwargs=dict(),
     postprocess=None,
     postprocess_kwargs=dict(),
+    progress=False,
     metrics_kwargs=dict(),
     **metrics,
 ):
@@ -35,6 +37,10 @@ def evaluate(
     total_steps = 0
 
     model.eval()
+
+    if progress:
+        loader = tqdm(loader)
+
     with torch.no_grad():
         for input, target in loader:
             input = input.to(_get_model_device(model))
@@ -89,6 +95,7 @@ def train(
     postprocess=None,
     window: int = 1,
     epoch: int = 0,
+    progress=False,
 ):
 
     model.train()
@@ -103,6 +110,9 @@ def train(
     meters = defaultdict(lambda: SmoothedValue(window=window))
 
     device = _get_model_device(model)
+
+    if progress:
+        loader = tqdm(loader)
 
     for step, (input, target) in enumerate(loader):
 
