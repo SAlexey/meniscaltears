@@ -603,7 +603,7 @@ class VidNet(nn.Module):
         x = self.backbone(x)["features"]
         x = self.pool(x)
 
-        labels = rearrange(self.out_cls(x), "bs (m l) -> bs m l", l=1)
-        boxes = rearrange(self.out_box(x), "bs (m b) -> bs m b", b=6)
+        labels = rearrange(self.cls_out(x), "bs (m l) -> bs m l", l=1)
+        boxes = rearrange(self.box_out(x), "bs (m b) -> bs m b", b=6)
 
         return {"labels": labels, "boxes": boxes}
