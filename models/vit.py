@@ -8,6 +8,7 @@ from torchvision.models._utils import IntermediateLayerGetter
 
 from .linear import MLP
 from hydra.utils import instantiate
+
 # helpers
 
 
@@ -120,8 +121,8 @@ class ViT(nn.Module):
         dim_head=64,
         dropout=0.0,
         emb_dropout=0.0,
-        cls_out:int=2,
-        box_out:int=12
+        cls_out: int = 2,
+        box_out: int = 12,
     ):
         super().__init__()
         image_depth, image_height, image_width = image_size
@@ -169,8 +170,12 @@ class ViT(nn.Module):
         self.pool = pool
         self.to_latent = nn.Identity()
 
-        self.mlp_cls = nn.Sequential(nn.LayerNorm(dim), MLP(dim, dim, cls_out, num_layers=3, dropout=0.5))
-        self.mlp_box = nn.Sequential(nn.LayerNorm(dim), MLP(dim, dim, box_out, num_layers=3, dropout=0.5))
+        self.mlp_cls = nn.Sequential(
+            nn.LayerNorm(dim), MLP(dim, dim, cls_out, num_layers=3, dropout=0.5)
+        )
+        self.mlp_box = nn.Sequential(
+            nn.LayerNorm(dim), MLP(dim, dim, box_out, num_layers=3, dropout=0.5)
+        )
 
     def forward(self, img):
         x = self.to_patch_embedding(img)
@@ -183,7 +188,7 @@ class ViT(nn.Module):
 
         x = self.transformer(x)
 
-        #x = x.mean(dim=1) if self.pool == "mean" else x[:, 2]
+        # x = x.mean(dim=1) if self.pool == "mean" else x[:, 2]
 
         cls_token = x[:, 1]
         box_token = x[:, 2]
@@ -193,12 +198,10 @@ class ViT(nn.Module):
         return out
 
 
-class ResViT(nn.Module):
+class ConViT(nn.Module):
     def __init__(
         self,
         *,
-        backbone,
-        backbone_dim,
         dim,
         depth,
         heads,
@@ -209,16 +212,26 @@ class ResViT(nn.Module):
         emb_dropout=0.0,
     ):
         super().__init__()
-        self.backbone = IntermediateLayerGetter(backbone, {"avgpool": "features"})
 
         assert pool in {
             "cls",
             "mean",
         }, "pool type must be either cls (cls token) or mean (mean pooling)"
 
-        self.to_patch_embedding = (nn.Linear(num_channels, dim),)
+        self.to_patch_embedding = nn.Sequential(
+            nn.Conv3d(in_channels=1, out_channels=24, kernel_size=3, stride=2),
+            nn.BatchNorm3d(24),
+            nn.Conv3d(in_channels=24, out_channels=48, kernel_size=3, stride=2),
+            nn.BatchNorm3d(48),
+            nn.Conv3d(in_channels=48, out_channels=96, kernel_size=3, stride=2),
+            nn.BatchNorm3d(96),
+            nn.Conv3d(in_channels=96, out_channels=128, kernel_size=3, stride=2),
+            nn.BatchNorm3d(128),
+            nn.Conv3d(in_channels=128, out_channels=dim, kernel_size=1),
+            Rearrange("b n d h w -> b (d h w) n"),
+        )
 
-        self.pos_embedding = nn.Parameter(torch.randn(1, num_channels + 1, dim))
+        self.pos_embedding = nn.Parameter(torch.randn(1, 0 + 1, dim))
         self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
         self.dropout = nn.Dropout(emb_dropout)
 
@@ -227,12 +240,12 @@ class ResViT(nn.Module):
         self.pool = pool
         self.to_latent = nn.Identity()
 
-        self.mlp_cls = nn.Sequential(nn.LayerNorm(dim), nn.Linear(dim, cls_out))
-        self.mlp_box = nn.Sequential(nn.LayerNorm(dim), MLP())
+        self.mlp_cls = nn.Sequential(nn.LayerNorm(dim), nn.Linear(dim, 6))
+        self.mlp_box = nn.Sequential(nn.LayerNorm(dim), MLP(dim, 1024, 12, 3, 0.5))
 
     def forward(self, img):
         x = self.to_patch_embedding(img)
-        b, n, _ = x.shape
+        b, n, *_ = x.shape
 
         cls_tokens = repeat(self.cls_token, "() n d -> b n d", b=b)
         x = torch.cat((cls_tokens, x), dim=1)
@@ -244,5 +257,5 @@ class ResViT(nn.Module):
         x = x.mean(dim=1) if self.pool == "mean" else x[:, :1]
 
         x = self.to_latent(x)
-        out = {"labels": self.mlp_head(x)}
+        out = {"labels": self.mlp_cls(x), "boxes": self.mlp_box(x)}
         return out

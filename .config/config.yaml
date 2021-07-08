@@ -1,5 +1,5 @@
 defaults:
-  - model: vit
+  - model: convit
 
 # MODEL
 device: cpu
