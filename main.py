@@ -186,22 +186,24 @@ def main(args):
         "confusion_matrix": confusion_matrix,
     }
 
-    postprocess = lambda out: {
-        "labels": rearrange(
-            out["labels"],
-            "bs tokens (obj cls) -> bs (tokens obj) cls",
-            cls=args.model.cls_out // 2,
-            obj=2,
-            tokens=args.model.cls_tokens,
-        ),
-        "boxes": rearrange(
-            out["boxes"].sigmoid(),
-            "bs tokens (obj box) -> bs (tokens obj) box",
-            box=args.model.box_out // 2,
-            obj=2,
-            tokens=args.model.cls_tokens,
-        ),
-    }
+    # postprocess = lambda out: {
+    #     "labels": rearrange(
+    #         out["labels"],
+    #         "bs tokens (obj cls) -> bs (tokens obj) cls",
+    #         cls=args.model.cls_out // 2,
+    #         obj=2,
+    #         tokens=args.model.cls_tokens,
+    #     ),
+    #     "boxes": rearrange(
+    #         out["boxes"].sigmoid(),
+    #         "bs tokens (obj box) -> bs (tokens obj) box",
+    #         box=args.model.box_out // 2,
+    #         obj=2,
+    #         tokens=args.model.cls_tokens,
+    #     ),
+    # }
+
+    postprocess = None 
 
     if args.eval:
 
@@ -291,7 +293,9 @@ def main(args):
 
             for name, value in eval_results["confusion_matrix"].items():
                 tn, fp, fn, tp = value.flatten()
-                logging.info(f"confusion matrix for {name} TP [{tp}] | TN [{tn}] | FP [{fp}] | FN [{fn}]")
+                logging.info(
+                    f"confusion matrix for {name} TP [{tp}] | TN [{tn}] | FP [{fp}] | FN [{fn}]"
+                )
 
         if epoch_loss < best_val_loss:
             best_val_loss = epoch_loss

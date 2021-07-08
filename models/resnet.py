@@ -559,3 +559,27 @@ class DetNet3D(ClsNet3D):
         if return_features:
             return x, out
         return out
+
+
+class VidNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        self.backbone = IntermediateLayerGetter(
+            models.video.r3d_18(), {"layer4": "features"}
+        )
+
+        self.pool = nn.AdaptiveAvgPool3d(1)
+
+        self.cls_out = nn.Linear(512, 2)
+        self.box_out = nn.Linear(512, 12)
+
+    def forward(self, x):
+
+        x = self.backbone(x)["features"]
+        x = self.pool(x)
+
+        labels = rearrange(self.out_cls(x), "bs (m l) -> bs m l", l=1)
+        boxes = rearrange(self.out_box(x), "bs (m b) -> bs m b", b=6)
+
+        return {"labels": labels, "boxes": boxes}
