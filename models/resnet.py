@@ -596,7 +596,6 @@ class VidNet(nn.Module):
         self.pool = nn.AdaptiveAvgPool3d(1)
 
         self.cls_out = nn.Linear(512, 2)
-        self.box_out = nn.Linear(512, 12)
 
     def forward(self, x):
 
@@ -604,6 +603,5 @@ class VidNet(nn.Module):
         x = self.pool(x).flatten(1)
 
         labels = rearrange(self.cls_out(x), "bs (m l) -> bs m l", l=1)
-        boxes = rearrange(self.box_out(x), "bs (m b) -> bs m b", b=6)
 
-        return {"labels": labels, "boxes": boxes}
+        return {"labels": labels}
