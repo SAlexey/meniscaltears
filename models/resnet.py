@@ -552,7 +552,7 @@ class DetNet3D(ClsNet3D):
         det_dropout=0.0,
         **kwargs,
     ):
-        super().__init__(*args, **kwargs)
+        super().__init__(backbone, *args, **kwargs)
         _, num_channels = CONFIG[backbone]
         self.out_box = MLP(
             input_dim=num_channels,
