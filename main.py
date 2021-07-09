@@ -194,7 +194,7 @@ def main(args):
         )
 
     else:
-        criterion = MixCriterion(**args.weight)
+        criterion = MixCriterion(**args.weights)
 
         train_transforms = T.Compose(
             [to_tensor, T.RandomResizedBBoxSafeCrop(), normalize]
