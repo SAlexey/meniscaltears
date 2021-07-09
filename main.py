@@ -159,20 +159,42 @@ def main(args):
     assert data_dir.exists(), "Provided data directory doesn't exist!"
     assert anns_dir.exists(), "Provided annotations directory doesn't exist!"
 
+    to_tensor = T.ToTensor()
     normalize = T.Normalize(mean=(0.4945), std=(0.3782,))
 
-    train_transforms = T.Compose([T.ToTensor(), T.CropIMG(), normalize])
+    if args.crop:
+        criterion = Criterion()
+        train_transforms = T.Compose([to_tensor, T.CropIMG(), normalize])
+        dataset_train = CropDataset(
+            data_dir,
+            anns_dir / "train.json",
+            transforms=train_transforms,
+        )
+        val_transforms = T.Compose([T.ToTensor(), T.CropIMG(random=False), normalize])
+        dataset_val = CropDataset(
+            data_dir,
+            anns_dir / "val.json",
+            transforms=val_transforms,
+            size=dataset_train.img_size,
+        )
 
-    val_transforms = T.Compose([T.ToTensor(), T.CropIMG(random=False), normalize])
+    else:
+        criterion = MixCriterion(**args.weight)
 
-    dataset_train = CropDataset(
-        data_dir,
-        anns_dir / "train.json",
-        transforms=train_transforms,
-    )
-    # limit number of training images
-    if args.limit_train_items:
-        dataset_train.keys = dataset_train.keys[: args.limit_train_items]
+        train_transforms = T.Compose(
+            [to_tensor, T.RandomResizedBBoxSafeCrop(), normalize]
+        )
+        dataset_train = MOAKSDataset(
+            data_dir,
+            anns_dir / "train.json",
+            transforms=train_transforms,
+        )
+        val_transforms = T.Compose([to_tensor, normalize])
+        dataset_val = MOAKSDataset(
+            data_dir,
+            anns_dir / "val.json",
+            transforms=val_transforms,
+        )
 
     dataloader_train = DataLoader(
         dataset_train,
@@ -180,17 +202,6 @@ def main(args):
         batch_size=args.batch_size,
         num_workers=args.num_workers,
     )
-
-    dataset_val = CropDataset(
-        data_dir,
-        anns_dir / "val.json",
-        transforms=val_transforms,
-        size=dataset_train.img_size,
-    )
-    # limit number of val images
-
-    if args.limit_val_items:
-        dataset_val.keys = dataset_val.keys[: args.limit_val_items]
 
     dataloader_val = DataLoader(
         dataset_val,
@@ -205,17 +216,18 @@ def main(args):
 
     model.to(device)
 
-    criterion = Criterion()
+    mlp_params = [
+        *model.out_cls.parameters(),
+    ]
 
-    # param_groups = [
-    #     {"params": model.backbone.parameters(), "lr": args.lr_backbone},
-    #     {
-    #         "params": [*model.out_cls.parameters(), *model.out_box.parameters()],
-    #         "lr": args.lr_head,
-    #     },
-    # ]
+    if hasattr(model, "out_box"):
+        for param in model.out_box.parameters():
+            mlp_params.append(param)
 
-    param_groups = model.parameters()
+    param_groups = [
+        {"params": model.backbone.parameters(), "lr": args.lr_backbone},
+        {"params": mlp_params, "lr": args.lr_head},
+    ]
 
     optimizer = torch.optim.Adam(param_groups, lr=args.lr)
     scheduler = torch.optim.lr_scheduler.StepLR(
