@@ -500,22 +500,30 @@ class DetNet2D(ClsNet2D):
         return out
 
 
-class ClsNet3D(nn.Module):
+class DetNet3D(nn.Module):
     def __init__(
         self,
         backbone,
         *args,
+        dropout=0.0,
         cls_output_dim=6,
         cls_hidden_dim=2048,
         cls_num_layers=1,
         cls_dropout=0.0,
+        det_hidden_dim=2048,
+        det_output_dim=12,
+        det_num_layers=2,
+        det_dropout=0.0,
         **kwargs,
     ):
         super().__init__()
-        assert backbone in CONFIG
-
+        _, num_channels = CONFIG[backbone]
         backbone, num_channels = CONFIG[backbone]
-        self.backbone = backbone(*args, **kwargs)
+        backbone = backbone(*args, **kwargs)
+        self.backbone = IntermediateLayerGetter(backbone, {"layer4": "features"})
+        self.feature_pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.batch_pool = nn.AdaptiveMaxPool1d(1)
+        self.dropout = nn.Dropout(p=dropout)
         self.out_cls = MLP(
             input_dim=num_channels,
             hidden_dim=cls_hidden_dim,
@@ -523,28 +531,6 @@ class ClsNet3D(nn.Module):
             num_layers=cls_num_layers,
             dropout=cls_dropout,
         )
-
-    def forward(self, x, return_features=False):
-        x = self.backbone(x)
-        out = {"labels": self.out_cls(x)}
-        if return_features:
-            return x, out
-        return out
-
-
-class DetNet3D(ClsNet3D):
-    def __init__(
-        self,
-        backbone,
-        *args,
-        det_hidden_dim=2048,
-        det_output_dim=12,
-        det_num_layers=2,
-        det_dropout=0.0,
-        **kwargs,
-    ):
-        super().__init__(backbone, *args, **kwargs)
-        _, num_channels = CONFIG[backbone]
         self.out_box = MLP(
             input_dim=num_channels,
             hidden_dim=det_hidden_dim,
@@ -553,12 +539,44 @@ class DetNet3D(ClsNet3D):
             dropout=det_dropout,
         )
 
-    def forward(self, x, return_features=False):
-        x, out = super().forward(x, return_features=True)
-        out["boxes"] = self.out_box(x)
-        if return_features:
-            return x, out
-        return out
+    def forward(self, x):
+        x = self.backbone(x)
+        return {"labels": self.out_cls(x), "boxes": self.out_box(x)}
+
+
+#%%
+
+import torch
+from torch import nn
+from torchvision import models
+import torch.nn.functional as F
+
+# video resnet
+
+
+class MLP(nn.Module):
+    """
+    Very simple multi-layer perceptron (also called FFN)
+    with dropout
+    """
+
+    def __init__(self, input_dim, hidden_dim, output_dim, num_layers, dropout=0.0):
+        super().__init__()
+        self.dropout = dropout
+        self.num_layers = num_layers
+        h = [hidden_dim] * (num_layers - 1)
+        self.layers = nn.ModuleList(
+            nn.Linear(n, k) for n, k in zip([input_dim] + h, h + [output_dim])
+        )
+
+    def forward(self, x):
+        for i, layer in enumerate(self.layers):
+            x = (
+                F.dropout(F.relu(layer(x)), p=self.dropout)
+                if i < self.num_layers - 1
+                else layer(x)
+            )
+        return x
 
 
 class BasicStem(nn.Sequential):
@@ -591,17 +609,26 @@ class VidNet(nn.Module):
             stem=BasicStem,
         )
 
-        self.backbone = IntermediateLayerGetter(backbone, {"layer4": "features"})
+        self.backbone = models._utils.IntermediateLayerGetter(
+            backbone, {"layer4": "features"}
+        )
 
         self.pool = nn.AdaptiveAvgPool3d(1)
 
-        self.cls_out = nn.Linear(512, 2)
+        self.out_cls = MLP(512, 512, 6, 3)
+        self.out_box = MLP(512, 512, 12, 3)
 
     def forward(self, x):
+
+        b, *_ = x.shape
 
         x = self.backbone(x)["features"]
         x = self.pool(x).flatten(1)
 
-        labels = rearrange(self.cls_out(x), "bs (m l) -> bs m l", l=1)
+        return {
+            "labels": self.out_cls(x).view(b, 2, -1),
+            "boxes": self.out_box(x).view(b, 2, -1),
+        }
 
-        return {"labels": labels}
+
+# %%

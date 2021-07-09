@@ -164,10 +164,15 @@ class ToTensor(object):
 
 
 class Normalize(object):
-    def __call__(self, img, tgt=None, mean=(0,), std=(1,)):
+    def __init__(self, mean=(0,), std=(1,)):
+
+        self.mean = torch.as_tensor(mean)
+        self.std = torch.as_tensor(std)
+
+    def __call__(self, img, tgt=None):
 
         img = img / img.max()
-        img = (img - torch.as_tensor(mean)) / torch.as_tensor(std)
+        img = (img - self.mean) / self.std
 
         if tgt is not None:
 

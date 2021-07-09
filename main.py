@@ -111,7 +111,7 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
 @hydra.main(config_path=".config/", config_name="config")
 def main(args):
     _set_random_seed(50899)
-    
+
     root = Path(os.environ["SCRATCH_ROOT"])
 
     data_dir = root / args.data_dir
@@ -120,7 +120,7 @@ def main(args):
     assert data_dir.exists(), "Provided data directory doesn't exist!"
     assert anns_dir.exists(), "Provided annotations directory doesn't exist!"
 
-    normalize = T.Normalize(mean=(0.4945), std=(0.3782, ))
+    normalize = T.Normalize(mean=(0.4945), std=(0.3782,))
 
     train_transforms = T.Compose(
         [T.ToTensor(), T.RandomResizedBBoxSafeCrop(), normalize]
@@ -171,7 +171,15 @@ def main(args):
 
     criterion = MixCriterion(**args.weights)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    param_groups = [
+        {"params": model.backbone.parameters(), "lr": args.lr_backbone},
+        {
+            "params": [*model.out_cls.parameters(), *model.out_box.parameters()],
+            "lr": args.lr_head,
+        },
+    ]
+
+    optimizer = torch.optim.Adam(param_groups)
     scheduler = torch.optim.lr_scheduler.StepLR(
         optimizer, args.lr_drop_step, args.lr_drop_rate
     )
@@ -189,24 +197,20 @@ def main(args):
         "confusion_matrix": confusion_matrix,
     }
 
-    # postprocess = lambda out: {
-    #     "labels": rearrange(
-    #         out["labels"],
-    #         "bs tokens (obj cls) -> bs (tokens obj) cls",
-    #         cls=args.model.cls_out // 2,
-    #         obj=2,
-    #         tokens=args.model.cls_tokens,
-    #     ),
-    #     "boxes": rearrange(
-    #         out["boxes"].sigmoid(),
-    #         "bs tokens (obj box) -> bs (tokens obj) box",
-    #         box=args.model.box_out // 2,
-    #         obj=2,
-    #         tokens=args.model.cls_tokens,
-    #     ),
-    # }
-
-    postprocess = None 
+    postprocess = lambda out: {
+        "labels": rearrange(
+            out["labels"],
+            "bs (menisci labels) -> bs menisci labels",
+            menisci=2,
+            labels=3,
+        ),
+        "boxes": rearrange(
+            out["boxes"].sigmoid(),
+            "bs (menisci boxes) -> bs menisci boxes",
+            menisci=2,
+            boxes=6,
+        ),
+    }
 
     if args.eval:
 
