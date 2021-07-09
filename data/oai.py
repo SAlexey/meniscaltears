@@ -8,6 +8,133 @@ import json
 
 import SimpleITK as sitk
 from scipy import ndimage
+import math
+
+
+class CropDataset(Dataset):
+    """
+    Base class for all the datasets
+    Args:
+        root (str|Path-like): path to inputs
+        anns (str|Path-like): path to a json annotation file
+    Kwargs:
+        transforms (optional, Sequence[Callable]): transforms applied to the inputs
+        size (optional, Tuple): desired img size
+
+
+    Notes:
+        annotations: must be a json file that loads into a dictionary with unique image ids as keys
+        example:
+        {
+            image_id_0: ann_0,
+            image_id_1: ann_1
+            ...
+        }
+    """
+
+    def __init__(self, root, anns, transforms=None, size=None):
+        self.root = root
+        self.train = "train" in str(anns)
+        with open(anns) as fh:
+            anns = json.load(fh)
+
+        # filter annotations where there are two boxes
+        self.anns = dict()
+        for ann in [
+            ann for ann in anns if len(ann["boxes"]) == 2 and all(ann["boxes"])
+        ]:
+            self.anns[ann["image_id"]] = ann
+
+        self.keys = [
+            ann["image_id"]
+            for ann in anns
+            if len(ann["boxes"]) == 2 and all(ann["boxes"])
+        ]
+
+        if not size:
+            self._img_size()
+        else:
+            assert size, "Please specify voxel size"
+            self.img_size = size
+
+        self._targets()
+        self.transform = transforms
+
+    def _img_size(self):
+        dividable_eight = lambda x: math.ceil(x / 16) * 16
+        size_factor = 1.05
+        mins = []
+        maxs = []
+        for ann in self.anns.values():
+            mins.append(np.min(np.array(ann["boxes"]), axis=0)[:3])
+            maxs.append(np.min(np.array(ann["boxes"]), axis=0)[3:])
+        maxs = np.vstack(maxs)
+        mins = np.vstack(mins)
+
+        max_roi = size_factor * np.max(maxs - mins, axis=0)
+        self.img_size = tuple(map(dividable_eight, max_roi))
+
+    def _targets(self):
+        self.targets = dict()
+        self.pos_weight = 0
+
+        for ann in self.anns.values():
+            target = dict()
+            labels = [
+                [
+                    ann.get("V00MMTLA"),
+                    ann.get("V00MMTLB"),
+                    ann.get("V00MMTLP"),
+                ],
+                [
+                    ann.get("V00MMTMA"),
+                    ann.get("V00MMTMB"),
+                    ann.get("V00MMTMP"),
+                ],
+            ]
+
+            labels = np.nan_to_num(np.asarray(labels, dtype=np.float32))
+            labels = (labels > 1).astype(float)
+
+            target["labels"] = labels
+            target["boxes"] = np.array(ann.get("boxes"))
+            self.pos_weight += labels
+            self.targets[ann["image_id"]] = target
+
+        self.pos_weight = torch.as_tensor(
+            (len(self) - self.pos_weight) / self.pos_weight
+        )
+
+    def __len__(self):
+        return len(self.keys)
+
+    def __getitem__(self, idx):
+        key = self.keys[idx]
+        input = self._get_input(key)
+        target = self._get_target(key)
+
+        if self.transform is not None:
+            input, target = self.transform(input, target, size=self.img_size)
+
+        ann = self.anns[key]
+
+        # flip left to right.
+        if ann["side"] == "left":
+            # assume by now input is a torch.Tensor[ch d h w]
+            input = input.flip(1)
+
+        return input, target
+
+    def _get_input(self, key):
+        read = self._get_reader()
+        path = os.path.join(self.root, f"{key}.npy")
+        return np.expand_dims(read(path), 0).clip(0, 255).astype(float)
+
+    def _get_reader(self):
+        return np.load
+
+    def _get_target(self, key):
+        return self.targets[key]
 
 
 class DatasetBase(Dataset):

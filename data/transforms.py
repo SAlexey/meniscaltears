@@ -6,13 +6,18 @@ import torchvision.transforms as T
 import torch.nn.functional as F
 from numbers import Number
 from random import randint, random
+import math
 
 
 class Compose(T.Compose):
-    def __call__(self, img, tgt):
+    def __call__(self, img, target=None, size=None):
         for t in self.transforms:
-            img, tgt = t(img, tgt)
-        return img, tgt
+            if isinstance(t, CropIMG):
+                img, target = t(img, target, size)
+
+            else:
+                img, target = t(img, target)
+        return img, target
 
 
 def _apply_crop_to_boxes(boxes, crop):
@@ -203,3 +208,89 @@ class RandomResizedBBoxSafeCrop(object):
             img, tgt = resize_volume(img, size, tgt=tgt)
 
         return img, tgt
+
+
+class CropIMG(object):
+    def __init__(self, p=0.5, random=True):
+        self.p = p
+        self.random = random
+
+    def get_crop(self, img, target, size_faktor=0.1):
+        """
+        random crop that preserves the bounding box
+
+        Args:
+            img (Tensor[..., D, H, W])
+            tgt (dict[boxes!,...])
+        Return
+            crop (tuple): (back, top, left, depth, height, width)
+
+        Notes:
+            0 <= back <= min_z(boxes)
+            0 <= top <= min_y(boxes)
+            0 <= left <= min_x(boxes)
+
+            max_z(boxes) <= depth <= img_depth
+            max_y(boxes) <= height <= img_height
+            max_x(boxes) <= width <= img_width
+        """
+
+        mins = torch.min(target["boxes"], 0).values[:3]
+        maxs = torch.max(target["boxes"], 0).values[-3:]
+
+        if self.random and random() <= self.p:
+            zmin = randint(
+                max(0, int(math.floor(mins[0] * (1 - size_faktor)))), mins[0]
+            )
+            ymin = randint(
+                max(0, int(math.floor(mins[1] * (1 - size_faktor)))), mins[1]
+            )
+            xmin = randint(
+                max(0, int(math.floor(mins[2] * (1 - size_faktor)))), mins[2]
+            )
+
+            zmax = randint(
+                maxs[0], int(math.ceil(min(img.size(1), maxs[0] * (1 + size_faktor))))
+            )
+            ymax = randint(
+                maxs[1], int(math.ceil(min(img.size(2), maxs[1] * (1 + size_faktor))))
+            )
+            xmax = randint(
+                maxs[2], int(math.ceil(min(img.size(3), maxs[2] * (1 + size_faktor))))
+            )
+        else:
+            zmin = max(0, int(math.floor(mins[0] * (1 - size_faktor / 2))))
+            ymin = max(0, int(math.floor(mins[1] * (1 - size_faktor / 2))))
+            xmin = max(0, int(math.floor(mins[2] * (1 - size_faktor / 2))))
+
+            zmax = min(img.size(1), int(math.ceil(maxs[0] * (1 + size_faktor / 2))))
+            ymax = min(img.size(2), int(math.ceil(maxs[1] * (1 + size_faktor / 2))))
+            xmax = min(img.size(3), int(math.ceil(maxs[2] * (1 + size_faktor / 2))))
+
+        depth = zmax - zmin
+        height = ymax - ymin
+        width = xmax - xmin
+
+        return (zmin, ymin, xmin, depth, height, width)
+
+    def resize_volume(self, img, size):
+        """
+        resize image
+        """
+        _assert_img(img, size=size)
+        img = F.interpolate(img.unsqueeze(0), size).squeeze(0)
+        return img
+
+    def crop_volume(self, img, crop):
+        """
+        crop image
+        """
+        _assert_img(img, crop=crop)
+        back, top, left, depth, height, width = crop
+        return img[..., back : back + depth, top : top + height, left : left + width]
+
+    def __call__(self, img, target, size):
+        crop = self.get_crop(img, target)
+        img = self.crop_volume(img, crop)
+        img = self.resize_volume(img, size)
+        return img, target

@@ -59,7 +59,7 @@ def evaluate(
 
             if criterion is not None:
                 target = {k: v.to(device) for k, v in target.items()}
-                loss, loss_dict = criterion(output, target, **criterion_kwargs)
+                loss, loss_dict = criterion(output, target, **criterion_kwargs), {}
 
                 total_loss += loss.detach().cpu().item()
 
@@ -125,7 +125,7 @@ def train(
         if postprocess is not None:
             output = postprocess(output)
 
-        loss, loss_dict = criterion(output, target, **criterion_kwargs)
+        loss, loss_dict = criterion(output, target, **criterion_kwargs), {}
 
         optimizer.zero_grad()
         loss.backward()

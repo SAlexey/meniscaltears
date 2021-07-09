@@ -1,5 +1,6 @@
 # %%
 
+from functools import partial
 from util.eval_utils import (
     balanced_accuracy_score,
     confusion_matrix,
@@ -13,8 +14,6 @@ import logging
 import os
 import random
 import time
-from collections import defaultdict, deque
-from math import ceil
 from pathlib import Path
 
 import hydra
@@ -24,19 +23,32 @@ import torch.nn.functional as F
 from hydra.utils import instantiate, to_absolute_path, call
 from torch import nn
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
 from data import transforms as T
-from data.oai import MOAKSDataset
+from data.oai import CropDataset, MOAKSDataset
 from util.box_ops import box_cxcywh_to_xyxy, generalized_box_iou
-from util.misc import SmoothedValue
 from einops import rearrange
 import sys
+from util.cam import MenisciCAM
 
 
 def _set_random_seed(seed):
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
+
+
+class Criterion(nn.Module):
+    def __init__(self, **weights):
+        super().__init__()
+
+    def loss_labels(self, out, tgt, **kwargs):
+        loss = F.binary_cross_entropy_with_logits(out, tgt, **kwargs)
+        return loss
+
+    def forward(self, out, tgt, **kwargs):
+        loss = 0
+        loss = self.loss_labels(out["labels"], tgt["labels"], **kwargs)
+        return loss
 
 
 class MixCriterion(nn.Module):
@@ -75,6 +87,27 @@ class MixCriterion(nn.Module):
             return loss, losses
 
         return loss
+
+
+class Postprocess(nn.Module):
+    def forward(self, output):
+        if "labels" in output:
+            output["labels"] = rearrange(
+                output["labels"],
+                "bs (menisci labels) -> bs menisci labels",
+                menisci=2,
+                labels=3,
+            )
+
+        if "boxes" in output:
+            output["boxes"] = rearrange(
+                output["boxes"],
+                "bs (menisci boxes) -> bs menisci boxes",
+                menisci=2,
+                boxes=6,
+            )
+
+        return output
 
 
 def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
@@ -122,21 +155,18 @@ def main(args):
 
     normalize = T.Normalize(mean=(0.4945), std=(0.3782,))
 
-    train_transforms = T.Compose(
-        [T.ToTensor(), T.RandomResizedBBoxSafeCrop(), normalize]
-    )
+    train_transforms = T.Compose([T.ToTensor(), T.CropIMG(), normalize])
 
-    val_transforms = T.Compose([T.ToTensor(), normalize])
+    val_transforms = T.Compose([T.ToTensor(), T.CropIMG(random=False), normalize])
 
-    dataset_train = MOAKSDataset(
+    dataset_train = CropDataset(
         data_dir,
         anns_dir / "train.json",
-        multilabel=args.multilabel,
         transforms=train_transforms,
     )
     # limit number of training images
     if args.limit_train_items:
-        dataset_train.anns = dataset_train.anns[: args.limit_train_items]
+        dataset_train.keys = dataset_train.keys[: args.limit_train_items]
 
     dataloader_train = DataLoader(
         dataset_train,
@@ -145,16 +175,16 @@ def main(args):
         num_workers=args.num_workers,
     )
 
-    dataset_val = MOAKSDataset(
+    dataset_val = CropDataset(
         data_dir,
         anns_dir / "val.json",
-        multilabel=args.multilabel,
         transforms=val_transforms,
+        size=dataset_train.img_size,
     )
     # limit number of val images
 
     if args.limit_val_items:
-        dataset_val.anns = dataset_val.anns[: args.limit_val_items]
+        dataset_val.keys = dataset_val.keys[: args.limit_val_items]
 
     dataloader_val = DataLoader(
         dataset_val,
@@ -169,17 +199,19 @@ def main(args):
 
     model.to(device)
 
-    criterion = MixCriterion(**args.weights)
+    criterion = Criterion()
 
-    param_groups = [
-        {"params": model.backbone.parameters(), "lr": args.lr_backbone},
-        {
-            "params": [*model.out_cls.parameters(), *model.out_box.parameters()],
-            "lr": args.lr_head,
-        },
-    ]
+    # param_groups = [
+    #     {"params": model.backbone.parameters(), "lr": args.lr_backbone},
+    #     {
+    #         "params": [*model.out_cls.parameters(), *model.out_box.parameters()],
+    #         "lr": args.lr_head,
+    #     },
+    # ]
 
-    optimizer = torch.optim.Adam(param_groups)
+    param_groups = model.parameters()
+
+    optimizer = torch.optim.Adam(param_groups, lr=args.lr)
     scheduler = torch.optim.lr_scheduler.StepLR(
         optimizer, args.lr_drop_step, args.lr_drop_rate
     )
@@ -189,38 +221,28 @@ def main(args):
     start = state["start"]
     best_val_loss = state["best_val_loss"]
 
-    metrics = {
-        "balanced_accuracy": balanced_accuracy_score,
-        "roc_curve": roc_curve,
-        "roc_auc_score": roc_auc_score,
-        "precision_recall_curve": precision_recall_curve,
-        "confusion_matrix": confusion_matrix,
+    names = ("LAH", "LB", "LPH", "MAH", "MB", "MPH")
+
+    METRICS = {
+        "balanced_accuracy": partial(balanced_accuracy_score, names=names),
+        "roc_curve": partial(roc_curve, names=names),
+        "roc_auc_score": partial(roc_auc_score, names=names),
+        "precision_recall_curve": partial(precision_recall_curve, names=names),
+        "confusion_matrix": partial(confusion_matrix, names=names),
     }
 
-    postprocess = lambda out: {
-        "labels": rearrange(
-            out["labels"],
-            "bs (menisci labels) -> bs menisci labels",
-            menisci=2,
-            labels=3,
-        ),
-        "boxes": rearrange(
-            out["boxes"].sigmoid(),
-            "bs (menisci boxes) -> bs menisci boxes",
-            menisci=2,
-            boxes=6,
-        ),
-    }
+    metrics = {key: METRICS[key] for key in args.metrics}
+
+    postprocess = Postprocess()
 
     if args.eval:
 
         logging.info("Running evaluation on the test set")
 
-        dataset = MOAKSDataset(
+        dataset = CropDataset(
             data_dir,
             anns_dir / "test.json",
-            binary=args.binary,
-            multilabel=args.multilabel,
+            size=dataset_train.img_size,
             transforms=val_transforms,
         )
 
@@ -331,4 +353,4 @@ def main(args):
 if __name__ == "__main__":
     main()
 
-# %%
+# %%ple indices must be integers or slices, not str

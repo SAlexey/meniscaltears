@@ -33,17 +33,29 @@ class ActivationsAndGradients:
 
 
 class GradCAM(nn.Module):
-    def __init__(self, model, target_layer, use_cuda=False, reshape_transform=None):
+    def __init__(
+        self,
+        model,
+        target_layer,
+        use_cuda=False,
+        reshape_transform=None,
+        postprocess=None,
+    ):
         super().__init__()
         self.model = model.eval()
         self.target_layer = target_layer
         self.use_cuda = use_cuda
         self.reshape_transform = reshape_transform
 
+        # postprocess outputs in any way (eg reshape)
+        self.postprocess = postprocess
+
         if self.use_cuda:
             self.model = self.model.cuda()
 
-        self.activations_and_gradients = ActivationsAndGradients(model, target_layer)
+        self.activations_and_gradients = ActivationsAndGradients(
+            model, target_layer, reshape_transform
+        )
 
     def get_cam_weights(self, input, target_category, activations, gradients):
         return gradients.mean(dim=(2, 3, 4))
@@ -62,21 +74,15 @@ class GradCAM(nn.Module):
         cam = weighted_activations.max(dim=1, keepdim=True).values
         return cam
 
-    def forward(self, input_tensor, target_category=None, eigen_smooth=False):
+    def forward(self, input_tensor, target_category, eigen_smooth=False):
 
         if self.use_cuda:
             input_tensor = input_tensor.cuda()
 
-        output = self.activations_and_gradients(input_tensor)["labels"]
+        output = self.activations_and_gradients(input_tensor)
 
-        if type(target_category) is int:
-            target_category = [target_category] * input_tensor.size(0)
-
-        if target_category is None:
-            target_category = output.cpu().argmax(-1)
-        else:
-            # assert len(target_category) == input_tensor.size(0)
-            pass
+        if self.postprocess is not None:
+            output = self.postprocess(output)
 
         self.model.zero_grad()
         loss = self.get_loss(output, target_category)
@@ -92,14 +98,31 @@ class GradCAM(nn.Module):
         return result
 
 
-
 class MenisciCAM(GradCAM):
 
     """
     Class Activation Mapping (CAM) for menisci predictions
     """
-    
-    def get_loss(self, output, meniscus_id=0):
-        loss = output[""]
 
-    
+    def get_cam_weights(self, input, meniscus, activations, gradients):
+        return gradients.mean(dim=(2, 3, 4))
+
+    def get_loss(self, output, meniscus):
+
+        labels = output["labels"][:, meniscus]
+        boxes = output["boxes"][:, meniscus]
+
+        loss_labels = labels.sum(dim=1)
+        loss_boxes = boxes.sum(dim=1)
+
+        loss = loss_labels  # + loss_boxes # <- depending on boxes ?
+
+        return loss
+
+    def get_cam_image(self, input, target_category, activations, gradients):
+
+        weights = self.get_cam_weights(input, target_category, activations, gradients)
+        weighted_activations = weights[:, :, None, None, None] * activations
+
+        cam = weighted_activations.max(dim=1, keepdim=True).values
+        return cam

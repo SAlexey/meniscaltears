@@ -521,8 +521,7 @@ class DetNet3D(nn.Module):
         backbone, num_channels = CONFIG[backbone]
         backbone = backbone(*args, **kwargs)
         self.backbone = IntermediateLayerGetter(backbone, {"layer4": "features"})
-        self.feature_pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.batch_pool = nn.AdaptiveMaxPool1d(1)
+        self.pool = nn.AdaptiveAvgPool3d(1)
         self.dropout = nn.Dropout(p=dropout)
         self.out_cls = MLP(
             input_dim=num_channels,
@@ -540,95 +539,7 @@ class DetNet3D(nn.Module):
         )
 
     def forward(self, x):
-        x = self.backbone(x)
-        return {"labels": self.out_cls(x), "boxes": self.out_box(x)}
-
-
-#%%
-
-import torch
-from torch import nn
-from torchvision import models
-import torch.nn.functional as F
-
-# video resnet
-
-
-class MLP(nn.Module):
-    """
-    Very simple multi-layer perceptron (also called FFN)
-    with dropout
-    """
-
-    def __init__(self, input_dim, hidden_dim, output_dim, num_layers, dropout=0.0):
-        super().__init__()
-        self.dropout = dropout
-        self.num_layers = num_layers
-        h = [hidden_dim] * (num_layers - 1)
-        self.layers = nn.ModuleList(
-            nn.Linear(n, k) for n, k in zip([input_dim] + h, h + [output_dim])
-        )
-
-    def forward(self, x):
-        for i, layer in enumerate(self.layers):
-            x = (
-                F.dropout(F.relu(layer(x)), p=self.dropout)
-                if i < self.num_layers - 1
-                else layer(x)
-            )
-        return x
-
-
-class BasicStem(nn.Sequential):
-    """The default conv-batchnorm-relu stem"""
-
-    def __init__(self):
-        super(BasicStem, self).__init__(
-            nn.Conv3d(
-                1,
-                64,
-                kernel_size=(3, 7, 7),
-                stride=(1, 2, 2),
-                padding=(1, 3, 3),
-                bias=False,
-            ),
-            nn.BatchNorm3d(64),
-            nn.ReLU(inplace=True),
-        )
-
-
-class VidNet(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-        backbone = models.video.resnet._video_resnet(
-            "r3d_18",
-            block=models.video.resnet.BasicBlock,
-            conv_makers=[models.video.resnet.Conv3DSimple] * 4,
-            layers=[2, 2, 2, 2],
-            stem=BasicStem,
-        )
-
-        self.backbone = models._utils.IntermediateLayerGetter(
-            backbone, {"layer4": "features"}
-        )
-
-        self.pool = nn.AdaptiveAvgPool3d(1)
-
-        self.out_cls = MLP(512, 512, 6, 3)
-        self.out_box = MLP(512, 512, 12, 3)
-
-    def forward(self, x):
-
-        b, *_ = x.shape
-
         x = self.backbone(x)["features"]
         x = self.pool(x).flatten(1)
-
-        return {
-            "labels": self.out_cls(x).view(b, 2, -1),
-            "boxes": self.out_box(x).view(b, 2, -1),
-        }
-
-
-# %%
+        x = self.dropout(x)
+        return {"labels": self.out_cls(x), "boxes": self.out_box(x)}
