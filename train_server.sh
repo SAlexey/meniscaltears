@@ -18,4 +18,4 @@ export PYTHONPATH=.
 
 
 # Launch training.
-exec python3 main.py -cp ".config/" -cn config_cropped
+exec python3 main.py "$@" #-cp ".config/" -cn config_cropped

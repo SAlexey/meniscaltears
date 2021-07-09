@@ -2,7 +2,7 @@ defaults:
   - model: resnet18_cropped
 
 # MODEL
-device: cpu
+device: cuda
 checkpoint: false
 state_dict: false
 # MODEL
@@ -19,6 +19,8 @@ metrics:
   - roc_auc_score
   - precision_recall_curve
   - confusion_matrix
+
+crop: true
 
 # CRITERION
 weights:
