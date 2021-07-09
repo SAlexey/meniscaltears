@@ -272,6 +272,20 @@ def main(args):
             model, loader, postprocess=postprocess, progress=True, **metrics
         )
 
+        logging.info(f"Obtain GradCAM: {args.cam}")
+
+        if args.cam:
+            cam = MenisciCAM(
+                model,
+                model.layer4,
+                use_cuda=args.device == "cuda",
+                postprocess=postprocess,
+            )
+
+            
+
+
+
         torch.save(eval_results, "test_results.pt")
         logging.info("Testing finished, exitting")
         sys.exit(0)
