@@ -145,7 +145,13 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
 def main(args):
     _set_random_seed(50899)
 
-    root = Path(os.environ["SCRATCH_ROOT"])
+    root = Path("/scratch/htc/ashestak")
+
+    if not root.exists():
+        root = Path("/scratch/visual/ashestak")
+
+    if not root.exists():
+        raise ValueError(f"Invalid root directory: {root}")
 
     data_dir = root / args.data_dir
     anns_dir = root / args.anns_dir
