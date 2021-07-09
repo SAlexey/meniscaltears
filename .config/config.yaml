@@ -1,28 +1,23 @@
 defaults:
-  - model: vidnet
+  - model: resnet18
 
 # MODEL
-device: cuda
+device: cpu
 checkpoint: false # path to the checkpoint
-state_dict: false # path to the model state_dict (overrides model state_dict in checkpoint)
+state_dict: /scratch/visual/ashestak/meniscaltears/best_models/resnet18/best_model.pt # path to the model state_dict (overrides model state_dict in checkpoint)
 eval: false # only run evaluation (uses test set)
-
-# model:
-#   cls_tokens: 1
-#   cls_out: 2
-#   box_out: 12
 
 # CRITERION
 weights:
   labels: 1
-  # boxes: 2
-  # giou: 1
+  boxes: 5
+  giou: 2
 
 # DATA
 data_dir: oai/v00/data/inputs
 anns_dir: meniscaltears/data
 binary: true
-multilabel: False
+multilabel: true
 limit_train_items: false # will take up to limit_train_items training examples
 limit_val_items: false # will take up to limit_train_items validation examples
 
@@ -30,7 +25,8 @@ limit_val_items: false # will take up to limit_train_items validation examples
 num_epochs: 500
 num_workers: 8
 batch_size: 4
-lr: 0.001
+lr_backbone: 0.001
+lr_head: 0.001
 lr_drop_step: 50
 lr_drop_rate: 0.5
 window: 20

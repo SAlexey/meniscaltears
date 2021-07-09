@@ -7,4 +7,4 @@
 /scratch/htc/ashestak/medical/outputs/2021-06-30/09-29-31/
 
 # resnet50 3d 
-/scratch/htc/ashestak//medical/outputs/2021-06-30/09-50-36/
+/scratch/htc/ashestak/medical/outputs/2021-06-30/09-50-36/
