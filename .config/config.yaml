@@ -4,8 +4,8 @@ defaults:
 # MODEL
 device: cpu
 checkpoint: false # path to the checkpoint
-state_dict: /scratch/visual/ashestak/meniscaltears/best_models/resnet18/best_model.pt # path to the model state_dict (overrides model state_dict in checkpoint)
-eval: true # only run evaluation (uses test set)
+state_dict: false # path to the model state_dict (overrides model state_dict in checkpoint)
+eval: false # only run evaluation (uses test set)
 eval_img: null # path to a specific image to evaluate
 cam: true # run grad cam for menisci (ignored if eval is false)
 meniscus: [0, 1] # run grad cam for these menisci (ignored if eval is false or cam is false)
@@ -27,8 +27,8 @@ data_dir: oai/v00/data/inputs
 anns_dir: meniscaltears/data
 binary: true
 multilabel: true
-limit_train_items: 1 # will take up to limit_train_items training examples
-limit_val_items: 100 # will take up to limit_train_items validation examples
+limit_train_items: false # will take up to limit_train_items training examples
+limit_val_items: false # will take up to limit_train_items validation examples
 
 # TRAINING HPARAMS
 num_epochs: 500
