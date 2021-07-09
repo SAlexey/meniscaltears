@@ -500,7 +500,7 @@ class DetNet2D(ClsNet2D):
         return out
 
 
-class DetNet3D(nn.Module):
+class ClsNet3D(nn.Module):
     def __init__(
         self,
         backbone,
@@ -510,13 +510,9 @@ class DetNet3D(nn.Module):
         cls_hidden_dim=2048,
         cls_num_layers=1,
         cls_dropout=0.0,
-        det_hidden_dim=2048,
-        det_output_dim=12,
-        det_num_layers=2,
-        det_dropout=0.0,
         **kwargs,
     ):
-        super().__init__()
+
         _, num_channels = CONFIG[backbone]
         backbone, num_channels = CONFIG[backbone]
         backbone = backbone(*args, **kwargs)
@@ -530,6 +526,32 @@ class DetNet3D(nn.Module):
             num_layers=cls_num_layers,
             dropout=cls_dropout,
         )
+
+    def forward(self, x, return_features=False):
+        x = self.backbone(x)["features"]
+        x = self.pool(x).flatten(1)
+        x = self.dropout(x)
+        out = {"labels": self.out_cls(x)}
+
+        if return_features:
+            return x, out
+
+        return out
+
+
+class DetNet3D(nn.Module):
+    def __init__(
+        self,
+        backbone,
+        *args,
+        det_hidden_dim=2048,
+        det_output_dim=12,
+        det_num_layers=2,
+        det_dropout=0.0,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        _, num_channels = CONFIG[backbone]
         self.out_box = MLP(
             input_dim=num_channels,
             hidden_dim=det_hidden_dim,
@@ -539,7 +561,6 @@ class DetNet3D(nn.Module):
         )
 
     def forward(self, x):
-        x = self.backbone(x)["features"]
-        x = self.pool(x).flatten(1)
-        x = self.dropout(x)
-        return {"labels": self.out_cls(x), "boxes": self.out_box(x)}
+        x, out = super().forward(x)
+        out["boxes"] =  self.out_box(x)
+        return out
