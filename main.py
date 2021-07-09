@@ -115,6 +115,15 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
 
     device = torch.device(args.device)
 
+    # safety 
+
+    load_mlp = False
+
+    try:
+        load_mlp = args.load_mlp
+    except: 
+        pass
+
     if args.checkpoint:
         state_dict = torch.load(to_absolute_path(args.checkpoint), map_location=device)
 
@@ -125,7 +134,7 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
 
     if "model" in state_dict:
         container = model
-        if not args.load_mlp:
+        if load_mlp:
             state_dict["model"] = {
                 k: v for k, v in state_dict["model"] if "out" not in k
             }
