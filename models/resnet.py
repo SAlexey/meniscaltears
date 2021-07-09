@@ -513,6 +513,8 @@ class ClsNet3D(nn.Module):
         **kwargs,
     ):
 
+        super().__init__()
+
         _, num_channels = CONFIG[backbone]
         backbone, num_channels = CONFIG[backbone]
         backbone = backbone(*args, **kwargs)
@@ -539,7 +541,7 @@ class ClsNet3D(nn.Module):
         return out
 
 
-class DetNet3D(nn.Module):
+class DetNet3D(ClsNet3D):
     def __init__(
         self,
         backbone,
@@ -562,5 +564,5 @@ class DetNet3D(nn.Module):
 
     def forward(self, x):
         x, out = super().forward(x)
-        out["boxes"] =  self.out_box(x)
+        out["boxes"] = self.out_box(x)
         return out
