@@ -124,7 +124,13 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
         )
 
     if "model" in state_dict:
-        model.load_state_dict(state_dict["model"])
+        container = model
+        if not args.load_mlp:
+            state_dict["model"] = {
+                k: v for k, v in state_dict["model"] if "out" not in k
+            }
+            container = container.backbone
+        container.load_state_dict(state_dict["model"])
 
     if "optimizer" in state_dict and optimizer is not None:
         optimizer.load_state_dict(state_dict["optimizer"])
@@ -281,10 +287,6 @@ def main(args):
                 use_cuda=args.device == "cuda",
                 postprocess=postprocess,
             )
-
-            
-
-
 
         torch.save(eval_results, "test_results.pt")
         logging.info("Testing finished, exitting")
