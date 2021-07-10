@@ -13,24 +13,18 @@ from util.eval_utils import (
 from engine import evaluate, train
 import json
 import logging
-import os
 import random
-import time
-from pathlib import Path
-
 import hydra
 import numpy as np
 import torch
 import torch.nn.functional as F
-from hydra.utils import instantiate, to_absolute_path, call
+from hydra.utils import instantiate, to_absolute_path
 from torch import nn
-from torch.utils.data import DataLoader
-from data import transforms as T
-from data.oai import CropDataset, MOAKSDataset
 from util.box_ops import box_cxcywh_to_xyxy, generalized_box_iou
 from einops import rearrange
 import sys
 from util.cam import MenisciCAM
+from data.oai import build
 
 
 def _set_random_seed(seed):
@@ -151,9 +145,6 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
     if start > 0:
         start += 1
 
-    logging.info(
-        f"State loaded successfully! Epoch {start}; Best Validation Loss {best_val_loss:.4f}"
-    )
     return {"start": start, "best_val_loss": best_val_loss}
 
 
@@ -161,71 +152,7 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
 def main(args):
     _set_random_seed(50899)
 
-    root = Path("/scratch/htc/ashestak")
-
-    if not root.exists():
-        root = Path("/scratch/visual/ashestak")
-
-    if not root.exists():
-        raise ValueError(f"Invalid root directory: {root}")
-
-    data_dir = root / args.data_dir
-    anns_dir = root / args.anns_dir
-
-    assert data_dir.exists(), "Provided data directory doesn't exist!"
-    assert anns_dir.exists(), "Provided annotations directory doesn't exist!"
-
-    to_tensor = T.ToTensor()
-    normalize = T.Normalize(mean=(0.4945), std=(0.3782,))
-
-    if args.crop:
-        train_transforms = T.Compose([to_tensor, T.CropIMG(), normalize])
-        dataset_train = CropDataset(
-            data_dir,
-            anns_dir / "train.json",
-            transforms=train_transforms,
-        )
-        val_transforms = T.Compose([T.ToTensor(), T.CropIMG(random=False), normalize])
-        dataset_val = CropDataset(
-            data_dir,
-            anns_dir / "val.json",
-            transforms=val_transforms,
-            size=dataset_train.img_size,
-        )
-
-    else:
-        train_transforms = T.Compose(
-            [to_tensor, T.RandomResizedBBoxSafeCrop(), normalize]
-        )
-        dataset_train = MOAKSDataset(
-            data_dir,
-            anns_dir / "train.json",
-            binary=args.binary,
-            multilabel=args.multilabel,
-            transforms=train_transforms,
-        )
-        val_transforms = T.Compose([to_tensor, normalize])
-        dataset_val = MOAKSDataset(
-            data_dir,
-            anns_dir / "val.json",
-            binary=args.binary,
-            multilabel=args.multilabel,
-            transforms=val_transforms,
-        )
-
-    dataloader_train = DataLoader(
-        dataset_train,
-        shuffle=True,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-    )
-
-    dataloader_val = DataLoader(
-        dataset_val,
-        shuffle=False,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-    )
+    dataloader_train, dataloader_val, dataloader_test = build(args)
 
     device = torch.device(args.device)
 
@@ -275,38 +202,32 @@ def main(args):
     if args.eval:
 
         logging.info("Running evaluation on the test set")
-
-        dataset = CropDataset(
-            data_dir,
-            anns_dir / "test.json",
-            size=dataset_train.img_size,
-            transforms=val_transforms,
-        )
-
-        loader = DataLoader(
-            dataset, shuffle=False, batch_size=1, num_workers=args.num_workers
-        )
-
         eval_results = evaluate(
-            model, loader, postprocess=postprocess, progress=True, **metrics
+            model, dataloader_test, postprocess=postprocess, progress=True, **metrics
         )
-
-        logging.info(f"Obtain GradCAM: {args.cam}")
 
         if args.cam:
+            logging.info(f"Obtaining GradCAM")
+
             cam = MenisciCAM(
                 model,
-                model.layer4,
+                model.backbone.layer4,
                 use_cuda=args.device == "cuda",
                 postprocess=postprocess,
             )
+
+            for img, ann in dataloader_test:
+                for meniscus in args.meniscus:
+                    cam_img = cam(img, meniscus).squeeze().numpy()
+                    np.save(f"{ann['image_id'].item()}_{meniscus}_cam", cam_img)
 
         torch.save(eval_results, "test_results.pt")
         logging.info("Testing finished, exitting")
         sys.exit(0)
 
     # start training
-    logging.info(f"Starting training epoch {start} ({time.strftime('%H:%M:%S')})")
+    logging.info(f"Epoch {start}; Best Validation Loss {best_val_loss:.4f}")
+    logging.info(f"Starting training")
     for epoch in range(start, epochs):
 
         pos_weight = dataloader_train.dataset.pos_weight

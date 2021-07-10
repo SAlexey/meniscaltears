@@ -5,12 +5,11 @@ defaults:
 device: cpu
 checkpoint: false # path to the checkpoint
 state_dict: best_models/resnet18/best_model.pt # path to the model state_dict (overrides model state_dict in checkpoint)
-load_mlp: false # if false will omit cls_out and box_out and only load backbone state_dict
+load_mlp: true # if false will omit cls_out and box_out and only load backbone state_dict
 eval: false # only run evaluation (uses test set)
-eval_img: null # path to a specific image to evaluate
-cam: true # run grad cam for menisci (ignored if eval is false)
+cam: false # run grad cam for menisci (ignored if eval is false)
 meniscus: [0, 1] # run grad cam for these menisci (ignored if eval is false or cam is false)
-metrics:
+metrics: 
   - balanced_accuracy
   - roc_curve
   - roc_auc_score
@@ -32,6 +31,7 @@ binary: true
 multilabel: true
 limit_train_items: false # will take up to limit_train_items training examples
 limit_val_items: false # will take up to limit_train_items validation examples
+limit_test_items: 2
 
 # TRAINING HPARAMS
 num_epochs: 500

@@ -53,9 +53,7 @@ class GradCAM(nn.Module):
         if self.use_cuda:
             self.model = self.model.cuda()
 
-        self.activations_and_gradients = ActivationsAndGradients(
-            model, target_layer, reshape_transform
-        )
+        self.activations_and_gradients = ActivationsAndGradients(model, target_layer)
 
     def get_cam_weights(self, input, target_category, activations, gradients):
         return gradients.mean(dim=(2, 3, 4))
