@@ -24,7 +24,7 @@ from util.box_ops import box_cxcywh_to_xyxy, generalized_box_iou
 from einops import rearrange
 import sys
 from util.cam import MenisciCAM
-from data.oai import build
+from data.oai import build, CropDataset, MOAKSDataset
 
 
 def _set_random_seed(seed):
@@ -151,14 +151,13 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
 @hydra.main(config_path=".config/", config_name="config")
 def main(args):
     _set_random_seed(50899)
-
     dataloader_train, dataloader_val, dataloader_test = build(args)
-
     device = torch.device(args.device)
 
     logging.info(f"Running On Device: {device}")
-
+    
     model = instantiate(args.model)
+    
     criterion = MixCriterion(**args.weights)
     model.to(device)
 
@@ -194,6 +193,8 @@ def main(args):
         "precision_recall_curve": partial(precision_recall_curve, names=names),
         "confusion_matrix": partial(confusion_matrix, names=names),
     }
+    logging.info(f"Running: {model}")
+    logging.info(f'Running model on dataset {"with" if isinstance(dataloader_train.dataset, CropDataset) else "without"} cropping\n')
 
     metrics = {key: METRICS[key] for key in args.metrics}
 

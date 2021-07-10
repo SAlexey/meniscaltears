@@ -1,4 +1,3 @@
-import torch
 from torch import nn
 from torch.nn import functional as F
 from einops import rearrange, reduce
@@ -124,3 +123,6 @@ class MenisciCAM(GradCAM):
 
         cam = weighted_activations.max(dim=1, keepdim=True).values
         return cam
+
+
+
