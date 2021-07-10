@@ -2,7 +2,7 @@ defaults:
   - model: resnet18
 
 # MODEL
-device: cpu
+device: gpu
 checkpoint: false # path to the checkpoint
 state_dict: false # path to the model state_dict (overrides model state_dict in checkpoint)
 eval: false # only run evaluation (uses test set)

@@ -5,10 +5,6 @@ defaults:
 device: cuda
 checkpoint: false
 state_dict: false
-# MODEL
-device: cpu
-checkpoint: false # path to the checkpoint
-state_dict: false # path to the model state_dict (overrides model state_dict in checkpoint)
 eval: false # only run evaluation (uses test set)
 eval_img: null # path to a specific image to evaluate
 cam: true # run grad cam for menisci (ignored if eval is false)

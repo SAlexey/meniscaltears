@@ -1,4 +1,4 @@
-_target_: models.resnet.ClsNet3D
+_target_: models.resnet.DetNet3D
 backbone: resnet18_3d
 num_classes: 6 
 dropout: 0.5
