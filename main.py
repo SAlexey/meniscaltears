@@ -1,6 +1,7 @@
 # %%
 
 from functools import partial
+from typing import Dict
 from util.eval_utils import (
     balanced_accuracy_score,
     confusion_matrix,
@@ -39,6 +40,20 @@ def _set_random_seed(seed):
 
 
 class MixCriterion(nn.Module):
+    """
+    Computes a set of losses depending on the  weights passetd to init
+    As input expects a dictionary for both target and output
+    Returns a dictionary containning losses
+
+    Example:
+    output = model(input) = {"labels": torch.Tensor[bs, *], ...}
+    target = {"labels": torch.Tensor[bs, *], ...}
+    criterion = MixCriterion(labels=1) <- will only see the labels in output and target
+    loss_dict = criterion(output, target) <- pass  dictionaries straight to forward
+
+    loss_dict = {"labels": torch.Tensor[1]}
+    """
+
     def __init__(self, **weights):
         super().__init__()
         self.weight = weights
@@ -61,7 +76,9 @@ class MixCriterion(nn.Module):
         loss = (1 - giou.diag()).mean()
         return loss
 
-    def forward(self, out, tgt, **kwargs):
+    def forward(
+        self, out: Dict[str, torch.Tensor], tgt: Dict[str, torch.Tensor], **kwargs
+    ):
         losses = {
             name: getattr(self, f"loss_{name}")(out, tgt, **kwargs)
             for name in self.weight
@@ -71,7 +88,7 @@ class MixCriterion(nn.Module):
 
 
 class Postprocess(nn.Module):
-    def forward(self, output):
+    def forward(self, output: Dict[str, torch.Tensor]):
         if "labels" in output:
             output["labels"] = rearrange(
                 output["labels"],
@@ -96,26 +113,28 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
 
     device = torch.device(args.device)
 
-    # safety 
-    load_mlp = True
-    try:
-        load_mlp = args.load_mlp
-    except:
-        pass
-
     if args.checkpoint:
-        state_dict = torch.load(to_absolute_path(args.checkpoint), map_location=device)
+        checkpoint_path = to_absolute_path(args.checkpoint)
+        state_dict = torch.load(checkpoint_path, map_location=device)
+        logging.info(f"Loaded a checkpoint from {checkpoint_path}")
 
     if args.state_dict:
-        state_dict["model"] = torch.load(
-            to_absolute_path(args.state_dict), map_location=device
-        )
+        state_dict_path = to_absolute_path(args.state_dict)
+        state_dict["model"] = torch.load(state_dict_path, map_location=device)
+        logging.info(f"Loaded model weights from {state_dict_path}")
+        if args.checkpoint:
+            logging.warning("Model weights in checkpoint have been overwritten!")
 
     if "model" in state_dict:
         container = model
-        if not load_mlp:
+        if not args.load_mlp:
+            logging.info("Only loading backbone weights")
+            # will ignore cls_out and box_out and only load backbone parameters
+            # usefull when swapping mlp heads
             state_dict["model"] = {
-                k: v for k, v in state_dict["model"].items() if "out" not in k
+                k.replace("backbone.", ""): v
+                for k, v in state_dict["model"].items()
+                if "out" not in k
             }
             container = container.backbone
         container.load_state_dict(state_dict["model"])
@@ -132,6 +151,9 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
     if start > 0:
         start += 1
 
+    logging.info(
+        f"State loaded successfully! Epoch {start}; Best Validation Loss {best_val_loss:.4f}"
+    )
     return {"start": start, "best_val_loss": best_val_loss}
 
 
@@ -157,7 +179,6 @@ def main(args):
     normalize = T.Normalize(mean=(0.4945), std=(0.3782,))
 
     if args.crop:
-        weight_dict = {"labels": 1}
         train_transforms = T.Compose([to_tensor, T.CropIMG(), normalize])
         dataset_train = CropDataset(
             data_dir,
@@ -173,7 +194,6 @@ def main(args):
         )
 
     else:
-        weight_dict = args.weights
         train_transforms = T.Compose(
             [to_tensor, T.RandomResizedBBoxSafeCrop(), normalize]
         )
@@ -209,8 +229,10 @@ def main(args):
 
     device = torch.device(args.device)
 
+    logging.info(f"Running On Device: {device}")
+
     model = instantiate(args.model)
-    criterion = MixCriterion(**weight_dict)
+    criterion = MixCriterion(**args.weights)
     model.to(device)
 
     mlp_params = [

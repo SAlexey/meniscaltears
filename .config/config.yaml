@@ -4,7 +4,7 @@ defaults:
 # MODEL
 device: cpu
 checkpoint: false # path to the checkpoint
-state_dict: false # path to the model state_dict (overrides model state_dict in checkpoint)
+state_dict: best_models/resnet18/best_model.pt # path to the model state_dict (overrides model state_dict in checkpoint)
 load_mlp: false # if false will omit cls_out and box_out and only load backbone state_dict
 eval: false # only run evaluation (uses test set)
 eval_img: null # path to a specific image to evaluate
@@ -17,7 +17,7 @@ metrics:
   - precision_recall_curve
   - confusion_matrix
 
-crop: False # use cropping dataset and criterion
+crop: true # use cropping dataset and criterion
 
 # CRITERION
 weights:
@@ -36,10 +36,10 @@ limit_val_items: false # will take up to limit_train_items validation examples
 # TRAINING HPARAMS
 num_epochs: 500
 num_workers: 2
-batch_size: 4
+batch_size: 1
 lr: 0.0001 # default learning rate
 lr_backbone: 0.001 # cnn learning rate
 lr_head: 0.001 # mlp learning rate
 lr_drop_step: 50
 lr_drop_rate: 0.5
-window: 20
+window: 2
