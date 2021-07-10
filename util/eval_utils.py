@@ -10,7 +10,9 @@ def pick(key):
     def inner_function(function):
         @wraps(function)
         def wrapper(*args, **kwargs):
-            func_args = (arg[key] for arg in args)
+            func_args = (
+                arg[key] if hasattr(arg, "__getitem__") else arg for arg in args
+            )
             return function(*func_args, **kwargs)
 
         return wrapper

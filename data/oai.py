@@ -10,6 +10,9 @@ import SimpleITK as sitk
 from scipy import ndimage
 import math
 
+from torch.utils.data import DataLoader
+from .transforms import *
+
 
 class CropDataset(Dataset):
     """
@@ -312,3 +315,116 @@ class DICOMDatasetMasks(DICOMDataset):
         mask = torch.from_numpy(mask)
         boxes = torch.as_tensor(boxes) / torch.as_tensor(mask.shape).repeat(1, 2)
         return mask.unsqueeze(0), boxes
+
+
+def build(args):
+
+    root = Path("/scratch/htc/ashestak")
+
+    if not root.exists():
+        root = Path("/scratch/visual/ashestak")
+
+    if not root.exists():
+        raise ValueError(f"Invalid root directory: {root}")
+
+    data_dir = root / args.data_dir
+    anns_dir = root / args.anns_dir
+
+    assert data_dir.exists(), "Provided data directory doesn't exist!"
+    assert anns_dir.exists(), "Provided annotations directory doesn't exist!"
+
+    to_tensor = ToTensor()
+    normalize = Normalize(mean=(0.4945), std=(0.3782,))
+
+    if args.crop:
+        train_transforms = Compose([to_tensor, CropIMG(), normalize])
+
+        dataset_train = CropDataset(
+            data_dir,
+            anns_dir / "train.json",
+            transforms=train_transforms,
+        )
+
+        if args.limit_train_items:
+            dataset_train.keys = dataset_train.keys[:args.limit_train_items]
+
+        val_transforms = Compose([ToTensor(), CropIMG(random=False), normalize])
+
+        dataset_val = CropDataset(
+            data_dir,
+            anns_dir / "val.json",
+            transforms=val_transforms,
+            size=dataset_train.img_size,
+        )
+
+        if args.limit_val_items:
+            dataset_val.keys = dataset_val.keys[: args.limit_val_items]
+
+        dataset_test = CropDataset(
+            data_dir,
+            anns_dir / "test.json",
+            transforms=val_transforms,
+            size=dataset_train.img_size,
+        )
+
+        if args.limit_test_items:
+            dataset_test.keys = dataset_test.keys[: args.limit_test_items]
+
+    else:
+        train_transforms = Compose([to_tensor, RandomResizedBBoxSafeCrop(), normalize])
+        dataset_train = MOAKSDataset(
+            data_dir,
+            anns_dir / "train.json",
+            binary=args.binary,
+            multilabel=args.multilabel,
+            transforms=train_transforms,
+        )
+
+        if args.limit_train_items:
+            dataset_train.anns = dataset_train.anns[: args.limit_train_items]
+
+        val_transforms = Compose([to_tensor, normalize])
+        dataset_val = MOAKSDataset(
+            data_dir,
+            anns_dir / "val.json",
+            binary=args.binary,
+            multilabel=args.multilabel,
+            transforms=val_transforms,
+        )
+
+        if args.limit_val_items:
+            dataset_val.anns = dataset_val.anns[: args.limit_val_items]
+
+        dataset_test = MOAKSDataset(
+            data_dir,
+            anns_dir / "test.json",
+            binary=args.binary,
+            multilabel=args.multilabel,
+            transforms=val_transforms,
+        )
+
+        if args.limit_test_items:
+            dataset_test.anns = dataset_test.anns[: args.limit_test_items]
+
+    dataloader_train = DataLoader(
+        dataset_train,
+        shuffle=True,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+    )
+
+    dataloader_val = DataLoader(
+        dataset_val,
+        shuffle=False,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+    )
+
+    dataloader_test = DataLoader(
+        dataset_test,
+        shuffle=False,
+        batch_size=1,
+        num_workers=args.num_workers,
+    )
+
+    return dataloader_train, dataloader_val, dataloader_test
