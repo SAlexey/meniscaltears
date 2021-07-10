@@ -2,7 +2,7 @@ defaults:
   - model: resnet18
 
 # MODEL
-device: cpu
+device: gpu
 checkpoint: false # path to the checkpoint
 state_dict: best_models/resnet18/best_model.pt # path to the model state_dict (overrides model state_dict in checkpoint)
 load_mlp: true # if false will omit cls_out and box_out and only load backbone state_dict

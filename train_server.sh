@@ -13,7 +13,7 @@
 
 
 source /scratch/htc/dluedke/meniscaltear/bin/activate
-cd /scratch/htc/dluedke/meniscal_tear
+cd /scratch/htc/dluedke/meniscaltears
 export PYTHONPATH=.
 
 
