@@ -82,7 +82,10 @@ class CropDataset(Dataset):
         self.pos_weight = 0
 
         for ann in self.anns.values():
-            target = dict()
+            target = {
+                "image_id": np.asarray(ann["image_id"], dtype=int),
+                "patient_id": np.asarray(ann["patient_id"], dtype=int),
+            }
             labels = [
                 [
                     ann.get("V00MMTLA"),

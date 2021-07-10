@@ -23,7 +23,7 @@ from torch import nn
 from util.box_ops import box_cxcywh_to_xyxy, generalized_box_iou
 from einops import rearrange
 import sys
-from util.cam import MenisciCAM
+from util.cam import MenisciCAM, to_gif
 from data.oai import build
 
 
@@ -216,10 +216,17 @@ def main(args):
                 postprocess=postprocess,
             )
 
-            for img, ann in dataloader_test:
-                for meniscus in args.meniscus:
-                    cam_img = cam(img, meniscus).squeeze().numpy()
-                    np.save(f"{ann['image_id'].item()}_{meniscus}_cam", cam_img)
+            for bs_img, bs_ann in dataloader_test:
+                for i in range(len(bs_img)):
+                    img = bs_img[i].unsqueeze(0)
+                    ann = dict()
+                    for key in bs_ann.keys():
+                        ann[key] = bs_ann[key][i]
+                    for meniscus in args.meniscus:
+                        cam_img = cam(img, meniscus).squeeze().numpy()
+                        np.save(f"{ann['image_id'].item()}_{meniscus}_cam", cam_img)
+                        print(f"{ann['image_id'].item()}_{meniscus}_cam.gif")
+                        to_gif(img, cam_img, f"{ann['image_id'].item()}_{meniscus}_cam.gif")
 
         torch.save(eval_results, "test_results.pt")
         logging.info("Testing finished, exitting")
