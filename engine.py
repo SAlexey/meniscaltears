@@ -9,7 +9,9 @@ from tqdm import tqdm
 from util.misc import SmoothedValue, _reduce, _to_device, _get_model_device
 import logging
 
-# utility functions
+# utilities
+def _reduce_loss_dict(loss_dict, weight_dict=dict()):
+    return sum(loss * weight_dict.get(name, 1) for name, loss in loss_dict.items())
 
 
 def evaluate(
@@ -59,7 +61,9 @@ def evaluate(
 
             if criterion is not None:
                 target = {k: v.to(device) for k, v in target.items()}
-                loss, loss_dict = criterion(output, target, **criterion_kwargs), {}
+
+                loss_dict = criterion(output, target, **criterion_kwargs)
+                loss = _reduce_loss_dict(loss_dict, criterion.weight)
 
                 total_loss += loss.detach().cpu().item()
 
@@ -125,7 +129,8 @@ def train(
         if postprocess is not None:
             output = postprocess(output)
 
-        loss, loss_dict = criterion(output, target, **criterion_kwargs), {}
+        loss_dict = criterion(output, target, **criterion_kwargs)
+        loss = _reduce_loss_dict(loss_dict, criterion.weight)
 
         optimizer.zero_grad()
         loss.backward()
@@ -135,8 +140,8 @@ def train(
 
         loss = loss.detach().cpu().item()
 
-        _, output = _to_device(torch.tensor(0), output)
-        _, target = _to_device(torch.tensor(0), output)
+        _, output = _to_device(torch.empty(0), output)
+        _, target = _to_device(torch.empty(0), output)
 
         outputs.append(output)
         targets.append(target)

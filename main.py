@@ -4,6 +4,7 @@ from functools import partial
 from util.eval_utils import (
     balanced_accuracy_score,
     confusion_matrix,
+    pick,
     precision_recall_curve,
     roc_auc_score,
     roc_curve,
@@ -37,34 +38,22 @@ def _set_random_seed(seed):
     random.seed(seed)
 
 
-class Criterion(nn.Module):
-    def __init__(self, **weights):
-        super().__init__()
-
-    def loss_labels(self, out, tgt, **kwargs):
-        loss = F.binary_cross_entropy_with_logits(out, tgt, **kwargs)
-        return loss
-
-    def forward(self, out, tgt, **kwargs):
-        loss = 0
-        loss = self.loss_labels(out["labels"], tgt["labels"], **kwargs)
-        return loss
-
-
 class MixCriterion(nn.Module):
     def __init__(self, **weights):
-        self.weight = weights
-        self.keys = {"giou": "boxes"}
         super().__init__()
+        self.weight = weights
 
+    @pick("labels")
     def loss_labels(self, out, tgt, **kwargs):
         loss = F.binary_cross_entropy_with_logits(out, tgt, **kwargs)
         return loss
 
+    @pick("boxes")
     def loss_boxes(self, out, tgt, **kwargs):
         loss = F.l1_loss(out, tgt)
         return loss
 
+    @pick("boxes")
     def loss_giou(self, out, tgt, **kwargs):
         out_xyxy = box_cxcywh_to_xyxy(out.flatten(0, 1))
         tgt_xyxy = box_cxcywh_to_xyxy(tgt.flatten(0, 1))
@@ -72,21 +61,13 @@ class MixCriterion(nn.Module):
         loss = (1 - giou.diag()).mean()
         return loss
 
-    def forward(self, out, tgt, return_interm_losses=True, **kwargs):
-        losses = {}
-        loss = 0
-        for name, weight in self.weight.items():
-
-            key = self.keys.get(name, name)
-            value = getattr(self, f"loss_{name}")(out[key], tgt[key], **kwargs)
-            losses[name] = value
-            loss += value * weight
-
+    def forward(self, out, tgt, **kwargs):
+        losses = {
+            name: getattr(self, f"loss_{name}")(out, tgt, **kwargs)
+            for name in self.weight
+        }
         assert losses
-        if return_interm_losses:
-            return loss, losses
-
-        return loss
+        return losses
 
 
 class Postprocess(nn.Module):
@@ -115,10 +96,8 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
 
     device = torch.device(args.device)
 
-    # safety
-
-    load_mlp = False
-
+    # safety 
+    load_mlp = True
     try:
         load_mlp = args.load_mlp
     except:
@@ -134,7 +113,7 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
 
     if "model" in state_dict:
         container = model
-        if load_mlp:
+        if not load_mlp:
             state_dict["model"] = {
                 k: v for k, v in state_dict["model"] if "out" not in k
             }
@@ -178,7 +157,7 @@ def main(args):
     normalize = T.Normalize(mean=(0.4945), std=(0.3782,))
 
     if args.crop:
-        criterion = Criterion()
+        weight_dict = {"labels": 1}
         train_transforms = T.Compose([to_tensor, T.CropIMG(), normalize])
         dataset_train = CropDataset(
             data_dir,
@@ -194,8 +173,7 @@ def main(args):
         )
 
     else:
-        criterion = MixCriterion(**args.weights)
-
+        weight_dict = args.weights
         train_transforms = T.Compose(
             [to_tensor, T.RandomResizedBBoxSafeCrop(), normalize]
         )
@@ -232,7 +210,7 @@ def main(args):
     device = torch.device(args.device)
 
     model = instantiate(args.model)
-
+    criterion = MixCriterion(**weight_dict)
     model.to(device)
 
     mlp_params = [
