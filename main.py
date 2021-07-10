@@ -115,7 +115,7 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
         container = model
         if not load_mlp:
             state_dict["model"] = {
-                k: v for k, v in state_dict["model"] if "out" not in k
+                k: v for k, v in state_dict["model"].items() if "out" not in k
             }
             container = container.backbone
         container.load_state_dict(state_dict["model"])
