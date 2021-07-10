@@ -101,7 +101,7 @@ class Postprocess(nn.Module):
 
         if "boxes" in output:
             output["boxes"] = rearrange(
-                output["boxes"],
+                output["boxes"].sigmoid(),
                 "bs (menisci boxes) -> bs menisci boxes",
                 menisci=2,
                 boxes=6,
@@ -115,13 +115,13 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
 
     device = torch.device(args.device)
 
-    # safety 
+    # safety
 
     load_mlp = False
 
     try:
         load_mlp = args.load_mlp
-    except: 
+    except:
         pass
 
     if args.checkpoint:
