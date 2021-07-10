@@ -563,6 +563,6 @@ class DetNet3D(ClsNet3D):
         )
 
     def forward(self, x):
-        x, out = super().forward(x)
+        x, out = super().forward(x, return_features=True)
         out["boxes"] = self.out_box(x)
         return out
