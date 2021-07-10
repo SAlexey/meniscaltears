@@ -202,12 +202,16 @@ def main(args):
         dataset_train = MOAKSDataset(
             data_dir,
             anns_dir / "train.json",
+            binary=args.binary,
+            multilabel=args.multilabel,
             transforms=train_transforms,
         )
         val_transforms = T.Compose([to_tensor, normalize])
         dataset_val = MOAKSDataset(
             data_dir,
             anns_dir / "val.json",
+            binary=args.binary,
+            multilabel=args.multilabel,
             transforms=val_transforms,
         )
 
