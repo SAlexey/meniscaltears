@@ -30,13 +30,18 @@ anns_dir: meniscaltears/data
 binary: true
 multilabel: true
 
+limit_train_items: false # will take up to limit_train_items training examples
+limit_val_items: false # will take up to limit_train_items validation examples
+limit_test_items: false
+
+
 # TRAINING HPARAMS
 num_epochs: 500
 num_workers: 8
-batch_size: 4
+batch_size: 16
 lr: 0.0001 # default learning rate
-lr_backbone: 0.001
-lr_head: 0.001
+lr_backbone: 0.0001
+lr_head: 0.0001
 lr_drop_step: 50
 lr_drop_rate: 0.5
 window: 20

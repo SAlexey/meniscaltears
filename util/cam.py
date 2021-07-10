@@ -1,3 +1,7 @@
+import os
+import imageio
+import tempfile
+import matplotlib.pyplot as plt
 from torch import nn
 from torch.nn import functional as F
 from einops import rearrange, reduce
@@ -107,10 +111,11 @@ class MenisciCAM(GradCAM):
     def get_loss(self, output, meniscus):
 
         labels = output["labels"][:, meniscus]
-        boxes = output["boxes"][:, meniscus]
+        if "boxes" in output.keys():
+            boxes = output["boxes"][:, meniscus]
+            loss_boxes = boxes.sum(dim=1)
 
         loss_labels = labels.sum(dim=1)
-        loss_boxes = boxes.sum(dim=1)
 
         loss = loss_labels  # + loss_boxes # <- depending on boxes ?
 
@@ -125,4 +130,26 @@ class MenisciCAM(GradCAM):
         return cam
 
 
+def to_gif(img, heatmap, out_path):
+    tmp_files = []
+    desc = []
+    
+    for n in range(img.shape[2]):
+        fd, path = tempfile.mkstemp(suffix=".png")
+        tmp_files.append(path)
+        desc.append(fd)
+        fig = plt.figure()
 
+        plt.imshow(img.detach().cpu().numpy()[0,0,n], 'gray', interpolation='none')
+        plt.imshow(heatmap[n], 'jet', interpolation='none', alpha=0.25)
+        plt.savefig(path)
+        plt.close()
+
+    images = []
+    for path, fd  in zip(tmp_files,desc):
+        images.append(imageio.imread(path))
+
+        os.remove(path)
+        os.close(fd)
+    
+    imageio.mimsave(out_path, images)
