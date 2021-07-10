@@ -423,7 +423,7 @@ def build(args):
     dataloader_test = DataLoader(
         dataset_test,
         shuffle=False,
-        batch_size=1,
+        batch_size=args.batch_size,
         num_workers=args.num_workers,
     )
 
