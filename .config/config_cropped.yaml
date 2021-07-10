@@ -30,6 +30,11 @@ anns_dir: meniscaltears/data
 binary: true
 multilabel: true
 
+limit_train_items: false # will take up to limit_train_items training examples
+limit_val_items: false # will take up to limit_train_items validation examples
+limit_test_items: false
+
+
 # TRAINING HPARAMS
 num_epochs: 500
 num_workers: 8
