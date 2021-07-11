@@ -211,11 +211,11 @@ class RandomResizedBBoxSafeCrop(object):
 
 
 class CropIMG(object):
-    def __init__(self, p=0.5, random=True):
+    def __init__(self, p=0.7, random=True):
         self.p = p
         self.random = random
 
-    def get_crop(self, img, target, size_faktor=0.1):
+    def get_crop(self, img, target, size_faktor=0.2):
         """
         random crop that preserves the bounding box
 
@@ -259,6 +259,7 @@ class CropIMG(object):
                 maxs[2], int(math.ceil(min(img.size(3), maxs[2] * (1 + size_faktor))))
             )
         else:
+            size_faktor = 0.1
             zmin = max(0, int(math.floor(mins[0] * (1 - size_faktor / 2))))
             ymin = max(0, int(math.floor(mins[1] * (1 - size_faktor / 2))))
             xmin = max(0, int(math.floor(mins[2] * (1 - size_faktor / 2))))

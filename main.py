@@ -23,13 +23,8 @@ from torch import nn
 from util.box_ops import box_cxcywh_to_xyxy, generalized_box_iou
 from einops import rearrange
 import sys
-<<<<<<< HEAD
-from util.cam import MenisciCAM
 from data.oai import build, CropDataset, MOAKSDataset
-=======
 from util.cam import MenisciCAM, to_gif
-from data.oai import build
->>>>>>> 2b1436eac5daf6c7165d194f46ae187119024838
 
 
 def _set_random_seed(seed):
@@ -208,9 +203,9 @@ def main(args):
     if args.eval:
 
         logging.info("Running evaluation on the test set")
-        eval_results = evaluate(
-            model, dataloader_test, postprocess=postprocess, progress=True, **metrics
-        )
+        #eval_results = evaluate(
+        #    model, dataloader_test, postprocess=postprocess, progress=True, **metrics
+        #)
 
         if args.cam:
             logging.info(f"Obtaining GradCAM")
