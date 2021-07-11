@@ -24,7 +24,7 @@ from util.box_ops import box_cxcywh_to_xyxy, generalized_box_iou
 from einops import rearrange
 import sys
 from data.oai import build, CropDataset, MOAKSDataset
-from util.cam import MenisciCAM, to_gif
+from util.cam import MenisciCAM, to_gif, MenisciSaliency
 
 
 def _set_random_seed(seed):
@@ -216,6 +216,7 @@ def main(args):
                 use_cuda=args.device == "cuda",
                 postprocess=postprocess,
             )
+            saliency = MenisciSaliency(model, use_cuda=args.device == "cuda")
 
             for bs_img, bs_ann in dataloader_test:
                 for i in range(len(bs_img)):
@@ -225,9 +226,11 @@ def main(args):
                         ann[key] = bs_ann[key][i]
                     for meniscus in args.meniscus:
                         cam_img = cam(img, meniscus).squeeze().numpy()
+                        sal_img = saliency(img, meniscus).squeeze().numpy()
                         np.save(f"{ann['image_id'].item()}_{meniscus}_cam", cam_img)
-                        print(f"{ann['image_id'].item()}_{meniscus}_cam.gif")
+                        print(sal_img.shape)
                         to_gif(img, cam_img, f"{ann['image_id'].item()}_{meniscus}_cam.gif")
+                        to_gif(img, sal_img, f"{ann['image_id'].item()}_{meniscus}_saliency.gif")
 
         torch.save(eval_results, "test_results.pt")
         logging.info("Testing finished, exitting")

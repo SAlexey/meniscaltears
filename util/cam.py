@@ -2,6 +2,7 @@ import os
 import imageio
 import tempfile
 import matplotlib.pyplot as plt
+import torch
 from torch import nn
 from torch.nn import functional as F
 from einops import rearrange, reduce
@@ -153,3 +154,39 @@ def to_gif(img, heatmap, out_path):
         os.close(fd)
     
     imageio.mimsave(out_path, images)
+
+
+class MenisciSaliency(nn.Module):
+    """
+    Saliency Mapping for menisci predictions
+    """
+
+    def __init__(
+        self,
+        model,
+        use_cuda=False,
+    ):
+        super().__init__()
+        self.model = model.eval()
+        self.use_cuda = use_cuda
+
+        if self.use_cuda:
+            self.model = self.model.cuda()
+
+
+    def forward(self, input_tensor, target_category):
+        if self.use_cuda:
+            input_tensor = input_tensor.cuda()
+
+        self.model.zero_grad()
+        output = self.model(input_tensor)
+
+        output = output["labels"][:, target_category]
+
+        score_max_index = output.argmax()
+        score_max = output[0,score_max_index]
+
+        score_max.backward()
+
+        saliency = input_tensor.grad.data.abs()
+        return saliency
