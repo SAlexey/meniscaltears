@@ -220,7 +220,8 @@ class GuidedBackprop():
         self, 
         model, 
         use_cuda=False,
-        postprocess=None
+        postprocess=None,
+        logging=None
         ):
         self.model = model
         self.gradients = None
@@ -240,7 +241,7 @@ class GuidedBackprop():
         def hook_function(module, grad_in, grad_out):
             self.gradients = grad_in[0]
         # Register hook to the first layer
-        first_layer = list(self.model.features._modules.items())[0][1]
+        first_layer = list(self.model.backbone._modules.items())[0][1]
         first_layer.register_backward_hook(hook_function)
 
     def update_relus(self):
@@ -267,19 +268,20 @@ class GuidedBackprop():
             self.forward_relu_outputs.append(ten_out)
 
         # Loop through layers, hook up ReLUs
-        for pos, module in self.model.features._modules.items():
+        for pos, module in self.model.backbone._modules.items():
             if isinstance(module, ReLU):
                 module.register_backward_hook(relu_backward_hook_function)
                 module.register_forward_hook(relu_forward_hook_function)
 
-    def generate_gradients(self, input_image, target_label, region):
+    def forward(self, input_image, target_label, region):
         if self.use_cuda:
             input_image = input_image.cuda()
-        # Forward pass
-        output = self.model(input_image)
         # Zero gradients
         input_image.requires_grad_()
         self.model.zero_grad()
+        
+
+        output = self.model(input_image)
         # Target for backprop
         if self.postprocess is not None:
             output = self.postprocess(output)

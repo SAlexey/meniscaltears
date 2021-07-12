@@ -1,10 +1,10 @@
 defaults:
-  - model: resnet18
+  - model: resnet50
 
 # MODEL
-device: gpu
+device: cuda
 checkpoint: false # path to the checkpoint
-state_dict: best_models/resnet18/best_model.pt # path to the model state_dict (overrides model state_dict in checkpoint)
+state_dict: false #best_models/resnet18/best_model.pt # path to the model state_dict (overrides model state_dict in checkpoint)
 load_mlp: true # if false will omit cls_out and box_out and only load backbone state_dict
 eval: false # only run evaluation (uses test set)
 cam: false # run grad cam for menisci (ignored if eval is false)
@@ -36,7 +36,7 @@ limit_test_items: 2
 # TRAINING HPARAMS
 num_epochs: 500
 num_workers: 2
-batch_size: 1
+batch_size: 4
 lr: 0.0001 # default learning rate
 lr_backbone: 0.001 # cnn learning rate
 lr_head: 0.001 # mlp learning rate

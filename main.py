@@ -24,7 +24,7 @@ from util.box_ops import box_cxcywh_to_xyxy, generalized_box_iou
 from einops import rearrange
 import sys
 from data.oai import build, CropDataset, MOAKSDataset
-from util.cam import MenisciCAM, to_gif, MenisciSaliency
+from util.cam import MenisciCAM, to_gif, MenisciSaliency, GuidedBackprop
 
 
 def _set_random_seed(seed):
@@ -217,6 +217,7 @@ def main(args):
                 postprocess=postprocess,
             )
             saliency = MenisciSaliency(model, use_cuda=args.device == "cuda", postprocess=postprocess)
+            g_back = GuidedBackprop(model, use_cuda=args.device == "cuda", postprocess=postprocess,logging=logging)
 
             for bs_img, bs_ann in dataloader_test:
                 for i in range(len(bs_img)):
@@ -230,11 +231,11 @@ def main(args):
                             for idx in np.argwhere(men_labels>0):
                                 cam_img = cam(img, meniscus, idx).squeeze().numpy()
                                 sal_img = saliency(img, meniscus, idx).detach().cpu().squeeze().numpy()
-                                mixed = sal_img * cam_img
+                                back_img = g_back.forward(img, meniscus, idx).detach().cpu().squeeze().numpy()
                                 np.save(f"{ann['image_id'].item()}_{meniscus}_cam", cam_img)
                                 to_gif(img, cam_img, f"{ann['image_id'].item()}_{meniscus}_{idx}cam.gif")
                                 to_gif(img, sal_img, f"{ann['image_id'].item()}_{meniscus}_{idx}_saliency.gif", saliency=True)
-                                to_gif(img, mixed, f"guided_grad_cam_{ann['image_id'].item()}_.gif")
+                                to_gif(img, back_img, f"guided_back_cam_{ann['image_id'].item()}_.gif", saliency=True)
 
         torch.save(eval_results, "test_results.pt")
         logging.info("Testing finished, exitting")
@@ -331,6 +332,7 @@ def main(args):
                 },
                 "checkpoint.ckpt",
             )
+    return best_val_loss
 
 
 if __name__ == "__main__":
