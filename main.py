@@ -203,9 +203,9 @@ def main(args):
     if args.eval:
 
         logging.info("Running evaluation on the test set")
-        #eval_results = evaluate(
-        #    model, dataloader_test, postprocess=postprocess, progress=True, **metrics
-        #)
+        eval_results = evaluate(
+            model, dataloader_test, postprocess=postprocess, progress=True, **metrics
+        )
 
         if args.cam:
             logging.info(f"Obtaining GradCAM")
@@ -216,7 +216,7 @@ def main(args):
                 use_cuda=args.device == "cuda",
                 postprocess=postprocess,
             )
-            saliency = MenisciSaliency(model, use_cuda=args.device == "cuda")
+            saliency = MenisciSaliency(model, use_cuda=args.device == "cuda", postprocess=postprocess)
 
             for bs_img, bs_ann in dataloader_test:
                 for i in range(len(bs_img)):
@@ -225,12 +225,16 @@ def main(args):
                     for key in bs_ann.keys():
                         ann[key] = bs_ann[key][i]
                     for meniscus in args.meniscus:
-                        cam_img = cam(img, meniscus).squeeze().numpy()
-                        sal_img = saliency(img, meniscus).squeeze().numpy()
-                        np.save(f"{ann['image_id'].item()}_{meniscus}_cam", cam_img)
-                        print(sal_img.shape)
-                        to_gif(img, cam_img, f"{ann['image_id'].item()}_{meniscus}_cam.gif")
-                        to_gif(img, sal_img, f"{ann['image_id'].item()}_{meniscus}_saliency.gif")
+                        if ann["labels"][meniscus].any():
+                            men_labels = ann["labels"][meniscus].detach().cpu().numpy().flatten()
+                            for idx in np.argwhere(men_labels>0):
+                                cam_img = cam(img, meniscus, idx).squeeze().numpy()
+                                sal_img = saliency(img, meniscus, idx).detach().cpu().squeeze().numpy()
+                                mixed = sal_img * cam_img
+                                np.save(f"{ann['image_id'].item()}_{meniscus}_cam", cam_img)
+                                to_gif(img, cam_img, f"{ann['image_id'].item()}_{meniscus}_{idx}cam.gif")
+                                to_gif(img, sal_img, f"{ann['image_id'].item()}_{meniscus}_{idx}_saliency.gif", saliency=True)
+                                to_gif(img, mixed, f"guided_grad_cam_{ann['image_id'].item()}_.gif")
 
         torch.save(eval_results, "test_results.pt")
         logging.info("Testing finished, exitting")
