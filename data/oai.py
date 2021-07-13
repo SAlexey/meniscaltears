@@ -84,7 +84,7 @@ class CropDataset(Dataset):
         for ann in self.anns.values():
             target = {
                 "image_id": np.asarray(ann["image_id"], dtype=int),
-                "patient_id": np.asarray(ann["patient_id"], dtype=int),
+                "patient_id": np.asarray(ann.get("patient_id", 0), dtype=int),
             }
             labels = [
                 [
@@ -208,68 +208,203 @@ class DatasetBase(Dataset):
 
 
 class MOAKSDataset(DatasetBase):
-    def __init__(self, *args, binary=True, multilabel=False, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        root,
+        anns,
+        *args,
+        binary=True,
+        multilabel=False,
+        transforms=None,
+        **kwargs,
+    ):
 
+        self.root = root
+        with open(anns) as fh:
+            anns = json.load(fh)
+
+        # filter annotations where there are two boxes
+        self.transform = transforms
+        self.anns = []
         self.targets = []
         self.pos_weight = 0 if binary else None
 
-        for ann in self.anns:
+        for ann in anns:
+
+            if not all(ann["boxes"]) or len(ann["boxes"]) != 2:
+                continue
+
             target = {
-                "image_id": np.asarray(ann["image_id"], dtype=int),
-                "patient_id": np.asarray(ann["patient_id"], dtype=int),
+                "image_id": torch.as_tensor(ann["image_id"], dtype=int),
+                "patient_id": torch.as_tensor(ann.get("patient_id", 0), dtype=int),
             }
 
             if multilabel:
                 labels = [
                     [
-                        ann.get("V00MMTLA"),
-                        ann.get("V00MMTLB"),
-                        ann.get("V00MMTLP"),
+                        ann.get("V00MMTLA", 0.0),
+                        ann.get("V00MMTLB", 0.0),
+                        ann.get("V00MMTLP", 0.0),
                     ],
                     [
-                        ann.get("V00MMTMA"),
-                        ann.get("V00MMTMB"),
-                        ann.get("V00MMTMP"),
+                        ann.get("V00MMTMA", 0.0),
+                        ann.get("V00MMTMB", 0.0),
+                        ann.get("V00MMTMP", 0.0),
                     ],
                 ]
             else:
-                labels = [[ann.get("LAT", 0)], [ann.get("MED", 0)]]
+                labels = [[ann.get("LAT", 0.0)], [ann.get("MED", 0.0)]]
 
-            labels = np.nan_to_num(np.asarray(labels, dtype=np.float32))
+            labels = torch.from_numpy(np.nan_to_num(np.asarray(labels).astype(float)))
 
             if binary:
-                labels = (labels > 1).astype(float)
+                if multilabel:
+                    labels = (labels > 1).float()
                 self.pos_weight += labels
 
             target["labels"] = labels
-            target["boxes"] = np.array(ann.get("boxes"))
+            target["boxes"] = torch.as_tensor(ann.get("boxes"))
 
             self.targets.append(target)
+            self.anns.append(ann)
 
         if self.pos_weight is not None:
             self.pos_weight = torch.as_tensor(
                 (len(self) - self.pos_weight) / self.pos_weight
             )
 
-    def _get_input(self, key):
-        input = super()._get_input(key)
-        return np.expand_dims(input, 0).clip(0, 255).astype(float)
+    def __len__(self):
+        return len(self.anns)
+
+    def _get_input(self, idx):
+        ann = self.anns[idx]
+        input = np.load(os.path.join(self.root, f"{ann['image_id']}.npy"))
+        input = torch.from_numpy(input).clip(0, 255).unsqueeze(0)
+        return input.float()
 
     def _get_target(self, key):
         return self.targets[key]
 
     def __getitem__(self, idx):
-        input, target = super().__getitem__(idx)
+        input = self._get_input(idx)
+        target = self._get_target(idx)
         ann = self.anns[idx]
 
         # flip left to right.
         # see README.md
         if ann["side"] == "left":
             # assume by now input is a torch.Tensor[ch d h w]
+
+            _, d, *_ = input.size()
             input = input.flip(1)
             target["boxes"] = target["boxes"].flip(0)
+            z0, y0, x0, z1, y1, x1 = target["boxes"].flip(0).unbind(-1)
+            target["boxes"] = torch.stack((d - z1, y0, x0, d - z0, y1, x1), -1)
+
+        # this gives always medial box first and lateral second
+        # need tp flip boxes again such that they match the labels
+
+        target["boxes"] = target["boxes"].flip(0)
+
+        if self.transform is not None:
+            input, target = self.transform(input, target)
+
         return input, target
+
+
+class TSEDataset(Dataset):
+    def __init__(self, root, anns, transforms=None):
+        self.root = Path(root)
+        with open(anns) as fh:
+            anns = json.load(fh)
+
+        self.anns = [
+            ann for ann in anns if len(ann["boxes"]) == 2 and all(ann["boxes"])
+        ]
+        self.transform = transforms
+
+    def __len__(self):
+        return len(self.anns)
+
+    def __getitem__(self, idx):
+
+        ann = self.anns[idx]
+        input = np.load(self.root / f"{ann['image_id']}.npy")
+        input = torch.from_numpy(input).clip(0, 255).float().unsqueeze(0)
+
+        target = {
+            "image_id": torch.as_tensor(ann["image_id"], dtype=int),
+            "labels": torch.as_tensor(
+                [
+                    [
+                        ann.get("V00MMTLA", 0.0),
+                        ann.get("V00MMTLB", 0.0),
+                        ann.get("V00MMTLP", 0.0),
+                    ],
+                    [
+                        ann.get("V00MMTMA", 0.0),
+                        ann.get("V00MMTMB", 0.0),
+                        ann.get("V00MMTMP", 0.0),
+                    ],
+                ]
+            ),
+            "boxes": torch.as_tensor(ann["boxes"]),
+        }
+
+        if self.transform is not None:
+            input, target = self.transform(input, target)
+
+        return input, target
+
+
+class MixDataset(Dataset):
+    def __init__(
+        self, root, anns_dess, anns_tse, swap_probability=0.5, transforms=None
+    ) -> None:
+
+        self.root = Path(root)
+
+        with open(anns_dess) as fh:
+            anns_dess = json.load(fh)
+
+        self.anns_dess = [
+            ann for ann in anns_dess if len(ann["boxes"]) == 2 and all(ann["boxes"])
+        ]
+
+        with open(anns_tse) as fh:
+            anns_tse = json.load(fh)
+
+        self.anns_tse = [
+            ann for ann in anns_dess if len(ann["boxes"]) == 2 and all(ann["boxes"])
+        ]
+
+        self.img_id_2_tse_idx = {
+            ann["image_id"]: i for i, ann in enumerate(self.anns_tse)
+        }
+
+        self.swap_probability = swap_probability
+
+    def _return_dess(self, input_dess, target_dess, input_tse=None, target_tse=None):
+        return input_dess, target_dess
+
+    def _swap(self, input_dess, target_dess, input_tse=None, target_tse=None):
+        if input_tse is not None and target_tse is not None:
+            return input_tse, target_tse
+        self._return_dess(input_dess, target_dess, input_tse, target_tse)
+
+    def _mix(self, input_dess, target_dess, input_tse=None, target_tse=None):
+        if input_tse is not None and target_tse is not None:
+            # linear combination of images and targets
+            # labels are the same  but boxes ? (convex hull?)
+            pass
+        else:
+            self._return_dess(input_dess, target_dess, input_tse, target_tse)
+
+    def __len__(self):
+        return len(self.anns_dess)
+
+    def __getitem__(self, idx):
+        ann = self.anns_dess[idx]
 
 
 class DICOMDataset(DatasetBase):
@@ -349,7 +484,7 @@ def build(args):
         )
 
         if args.limit_train_items:
-            dataset_train.keys = dataset_train.keys[:args.limit_train_items]
+            dataset_train.keys = dataset_train.keys[: args.limit_train_items]
 
         val_transforms = Compose([ToTensor(), CropIMG(random=False), normalize])
 
@@ -374,7 +509,9 @@ def build(args):
             dataset_test.keys = dataset_test.keys[: args.limit_test_items]
 
     else:
-        train_transforms = Compose([to_tensor, RandomResizedBBoxSafeCrop(), normalize])
+        train_transforms = Compose(
+            (to_tensor, RandomResizedBBoxSafeCrop(p=0.5), normalize)
+        )
         dataset_train = MOAKSDataset(
             data_dir,
             anns_dir / "train.json",
@@ -431,3 +568,6 @@ def build(args):
     )
 
     return dataloader_train, dataloader_val, dataloader_test
+
+
+# %%
