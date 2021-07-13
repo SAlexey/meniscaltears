@@ -183,13 +183,21 @@ class Normalize(object):
 
             tgt = tgt.copy()
 
-            if "boxes" in tgt:
+            if "boxes" in tgt: 
                 boxes = tgt["boxes"]
                 boxes = box_xyxy_to_cxcywh(boxes)
                 boxes = normalize_boxes(boxes, size=tuple(img.size()[-3:]))
                 tgt["boxes"] = boxes
 
         return img, tgt
+
+
+class Resize(object):
+    def __init__(self, size=(160, 384, 384)):
+        self.size = size
+
+    def __call__(self, input, tgt=None):
+        return resize_volume(input, self.size, tgt=tgt)
 
 
 class RandomResizedBBoxSafeCrop(object):

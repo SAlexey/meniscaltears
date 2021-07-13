@@ -23,13 +23,8 @@ from torch import nn
 from util.box_ops import box_cxcywh_to_xyxy, generalized_box_iou
 from einops import rearrange
 import sys
-<<<<<<< HEAD
-from util.cam import MenisciCAM
-from data.oai import build, CropDataset, MOAKSDataset
-=======
 from util.cam import MenisciCAM, to_gif
-from data.oai import build
->>>>>>> 2b1436eac5daf6c7165d194f46ae187119024838
+from data.oai import build, CropDataset
 
 
 def _set_random_seed(seed):
@@ -160,9 +155,9 @@ def main(args):
     device = torch.device(args.device)
 
     logging.info(f"Running On Device: {device}")
-    
+
     model = instantiate(args.model)
-    
+
     criterion = MixCriterion(**args.weights)
     model.to(device)
 
@@ -199,7 +194,9 @@ def main(args):
         "confusion_matrix": partial(confusion_matrix, names=names),
     }
     logging.info(f"Running: {model}")
-    logging.info(f'Running model on dataset {"with" if isinstance(dataloader_train.dataset, CropDataset) else "without"} cropping\n')
+    logging.info(
+        f'Running model on dataset {"with" if isinstance(dataloader_train.dataset, CropDataset) else "without"} cropping\n'
+    )
 
     metrics = {key: METRICS[key] for key in args.metrics}
 
@@ -232,7 +229,9 @@ def main(args):
                         cam_img = cam(img, meniscus).squeeze().numpy()
                         np.save(f"{ann['image_id'].item()}_{meniscus}_cam", cam_img)
                         print(f"{ann['image_id'].item()}_{meniscus}_cam.gif")
-                        to_gif(img, cam_img, f"{ann['image_id'].item()}_{meniscus}_cam.gif")
+                        to_gif(
+                            img, cam_img, f"{ann['image_id'].item()}_{meniscus}_cam.gif"
+                        )
 
         torch.save(eval_results, "test_results.pt")
         logging.info("Testing finished, exitting")
