@@ -1,4 +1,4 @@
-# %%
+#%%
 
 from functools import partial
 from typing import Dict
@@ -152,6 +152,7 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
 def main(args):
     _set_random_seed(50899)
     dataloader_train, dataloader_val, dataloader_test = build(args)
+
     device = torch.device(args.device)
 
     logging.info(f"Running On Device: {device}")
