@@ -1,5 +1,48 @@
 defaults:
-  - model: resnet50_cropped
+  - override hydra/sweeper: ax
+
+
+model:
+  _target_: models.resnet.DetNet3D
+  backbone: resnet50_3d
+  cls_output_dim: 6
+  cls_hidden_dim: 2048
+  cls_num_layers: 3
+  dropout: ??
+  cls_dropout: ??
+batch_size: ??
+lr_head: ??
+lr_backbone: ??
+
+hydra:
+  sweeper:
+    # The following part of config is used to setup the Hydra Ax plugin and is optional
+    ax_config:
+
+      # max_trials is application-specific. Tune it for your use case
+      max_trials: 20
+
+      experiment:
+        # Default to minimize, set to false to maximize
+        minimize: true
+
+      params:
+        model.dropout:
+          type: range
+          bounds: [0.1, 0.9]
+        model.cls_dropout:
+          type: range
+          bounds: [0.1, 0.9]
+        batch_size:
+          type: range
+          bounds: [2, 64]
+        lr_head:
+          type: range 
+          bounds: [0.01, 0.00001]
+        lr_backbone:
+          type: range
+          bounds: [0.01, 0.00001]
+
 
 # MODEL
 device: cuda
@@ -36,12 +79,10 @@ limit_test_items: false
 
 
 # TRAINING HPARAMS
-num_epochs: 500
+num_epochs: 100
 num_workers: 8
-batch_size: 4
 lr: 0.0001 # default learning rate
-lr_backbone: 0.0001
-lr_head: 0.0001
 lr_drop_step: 50
 lr_drop_rate: 0.5
 window: 20
+
