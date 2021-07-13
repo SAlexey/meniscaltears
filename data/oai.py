@@ -351,6 +351,8 @@ class TSEDataset(Dataset):
             "boxes": torch.as_tensor(ann["boxes"]),
         }
 
+        target["labels"] = (target["labels"] > 1).float()
+
         if self.transform is not None:
             input, target = self.transform(input, target)
 
