@@ -27,6 +27,10 @@ from data.oai import build, CropDataset, MOAKSDataset
 from util.cam import MenisciCAM, to_gif, MenisciSaliency
 
 
+REGION = {0: "anterior_horn", 1: "body", 2: "posterior_horn"}
+LAT_MED = {0: "lateral", 1: "medial"}
+
+
 def _set_random_seed(seed):
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -232,9 +236,9 @@ def main(args):
                                 sal_img = saliency(img, meniscus, idx).detach().cpu().squeeze().numpy()
                                 mixed = sal_img * cam_img
                                 np.save(f"{ann['image_id'].item()}_{meniscus}_cam", cam_img)
-                                to_gif(img, cam_img, f"{ann['image_id'].item()}_{meniscus}_{idx}cam.gif")
-                                to_gif(img, sal_img, f"{ann['image_id'].item()}_{meniscus}_{idx}_saliency.gif", saliency=True)
-                                to_gif(img, mixed, f"guided_grad_cam_{ann['image_id'].item()}_.gif")
+                                to_gif(img, cam_img, f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_gradcam.gif")
+                                to_gif(img, sal_img, f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_saliency.gif", saliency=True)
+                                to_gif(img, mixed, f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_guided.gif")
 
         torch.save(eval_results, "test_results.pt")
         logging.info("Testing finished, exitting")
