@@ -297,14 +297,8 @@ class MOAKSDataset(DatasetBase):
 
             _, d, *_ = input.size()
             input = input.flip(1)
-            target["boxes"] = target["boxes"].flip(0)
             z0, y0, x0, z1, y1, x1 = target["boxes"].flip(0).unbind(-1)
             target["boxes"] = torch.stack((d - z1, y0, x0, d - z0, y1, x1), -1)
-
-        # this gives always medial box first and lateral second
-        # need tp flip boxes again such that they match the labels
-
-        target["boxes"] = target["boxes"].flip(0)
 
         if self.transform is not None:
             input, target = self.transform(input, target)
