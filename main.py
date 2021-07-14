@@ -1,5 +1,14 @@
 #%%
 
+from matplotlib import pyplot as plt
+from torch.utils.data import DataLoader
+from data.transforms import (
+    Compose,
+    Normalize,
+    Resize,
+    ToTensor,
+    RandomResizedBBoxSafeCrop,
+)
 from functools import partial
 from typing import Dict
 from util.eval_utils import (
@@ -23,7 +32,7 @@ from torch import nn
 from util.box_ops import box_cxcywh_to_xyxy, generalized_box_iou
 from einops import rearrange
 import sys
-from data.oai import build, CropDataset, MOAKSDataset
+from data.oai import build, CropDataset, MOAKSDataset, TSEDataset
 from util.cam import MenisciCAM, to_gif, MenisciSaliency, GuidedBackprop
 
 
@@ -205,6 +214,18 @@ def main(args):
 
     if args.eval:
 
+        tse_transforms = Compose((ToTensor(), Resize(), Normalize()))
+
+        dataset_tse = TSEDataset(
+            "/scratch/visual/ashestak/oai/v00/data/inputs",
+            "/scratch/visual/ashestak/meniscaltears/data/moaks_tse.json",
+            transforms=tse_transforms,
+        )
+
+        dataloader_test = DataLoader(
+            dataset_tse, batch_size=4, shuffle=False, num_workers=4
+        )
+
         logging.info("Running evaluation on the test set")
         eval_results = evaluate(
             model, dataloader_test, postprocess=postprocess, progress=True, **metrics
@@ -219,8 +240,15 @@ def main(args):
                 use_cuda=args.device == "cuda",
                 postprocess=postprocess,
             )
-            saliency = MenisciSaliency(model, use_cuda=args.device == "cuda", postprocess=postprocess)
-            g_back = GuidedBackprop(model, use_cuda=args.device == "cuda", postprocess=postprocess,logging=logging)
+            saliency = MenisciSaliency(
+                model, use_cuda=args.device == "cuda", postprocess=postprocess
+            )
+            g_back = GuidedBackprop(
+                model,
+                use_cuda=args.device == "cuda",
+                postprocess=postprocess,
+                logging=logging,
+            )
 
             for bs_img, bs_ann in dataloader_test:
                 for i in range(len(bs_img)):
@@ -230,15 +258,45 @@ def main(args):
                         ann[key] = bs_ann[key][i]
                     for meniscus in args.meniscus:
                         if ann["labels"][meniscus].any():
-                            men_labels = ann["labels"][meniscus].detach().cpu().numpy().flatten()
-                            for idx in np.argwhere(men_labels>0):
+                            men_labels = (
+                                ann["labels"][meniscus].detach().cpu().numpy().flatten()
+                            )
+                            for idx in np.argwhere(men_labels > 0):
                                 cam_img = cam(img, meniscus, idx).squeeze().numpy()
-                                sal_img = saliency(img, meniscus, idx).detach().cpu().squeeze().numpy()
-                                back_img = g_back.forward(img, meniscus, idx).detach().cpu().squeeze().numpy()
-                                np.save(f"{ann['image_id'].item()}_{meniscus}_cam", cam_img)
-                                to_gif(img, cam_img, f"{ann['image_id'].item()}_{meniscus}_{idx}cam.gif")
-                                to_gif(img, sal_img, f"{ann['image_id'].item()}_{meniscus}_{idx}_saliency.gif", saliency=True)
-                                to_gif(img, back_img, f"guided_back_cam_{ann['image_id'].item()}_.gif", saliency=True)
+                                sal_img = (
+                                    saliency(img, meniscus, idx)
+                                    .detach()
+                                    .cpu()
+                                    .squeeze()
+                                    .numpy()
+                                )
+                                back_img = (
+                                    g_back.forward(img, meniscus, idx)
+                                    .detach()
+                                    .cpu()
+                                    .squeeze()
+                                    .numpy()
+                                )
+                                np.save(
+                                    f"{ann['image_id'].item()}_{meniscus}_cam", cam_img
+                                )
+                                to_gif(
+                                    img,
+                                    cam_img,
+                                    f"{ann['image_id'].item()}_{meniscus}_{idx}cam.gif",
+                                )
+                                to_gif(
+                                    img,
+                                    sal_img,
+                                    f"{ann['image_id'].item()}_{meniscus}_{idx}_saliency.gif",
+                                    saliency=True,
+                                )
+                                to_gif(
+                                    img,
+                                    back_img,
+                                    f"guided_back_cam_{ann['image_id'].item()}_.gif",
+                                    saliency=True,
+                                )
 
         torch.save(eval_results, "test_results.pt")
         logging.info("Testing finished, exitting")
