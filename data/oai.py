@@ -358,15 +358,22 @@ class MixDataset(Dataset):
     def __init__(self, root, anns, anns_tse, train=False, p=0.1, transforms=None):
         self.train = train
         self.p = p
-        self.dess = MOAKSDataset(root, anns, transforms=transforms)
+        self.dess = MOAKSDataset(
+            root,
+            anns,
+            transforms=Compose(
+                ToTensor(), RandomInvert(0.3), Normalize(mean=(0.4945), std=(0.3782,))
+            ),
+        )
+        self.tse = MOAKSDataset(
+            root,
+            anns_tse,
+            transforms=Compose(
+                (ToTensor(), RandomInvert(0.3), Normalize(mean=(0.359,), std=(0.278,)))
+            ),
+        )
 
-        if transforms is not None:
-            # assume the last transform is Normalization
-            transforms = Compose(
-                transforms.transforms[:-1] + (Normalize(mean=(0.359,), std=(0.278,)),)
-            )
-
-        self.tse = MOAKSDataset(root, anns_tse, transforms=transforms)
+        self.transform = transforms
 
     def __len__(self):
         return len(self.dess) + len(self.tse)
@@ -392,11 +399,14 @@ class MixDataset(Dataset):
 
             # renormalize
 
-            # img = img - img.mean()
-            # img = img / img.std()
+            img = img - img.mean()
+            img = img / img.std()
 
             if beta > 0.5:
                 tgt["boxes"] = target["boxes"]
+
+            if self.transforms is not None:
+                img, tgt = self.transform(img, tgt)
 
         return img, tgt
 
