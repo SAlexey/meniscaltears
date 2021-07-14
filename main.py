@@ -209,10 +209,22 @@ def main(args):
 
     if args.eval:
 
+        logging.info("Running evaluation on the training set")
+        train_results = evaluate(
+            model, dataloader_train, postprocess=postprocess, progress=True, **metrics
+        )
+        logging.info(f"Trainings AUC: {train_results['roc_auc_score']}")
+        logging.info("Running evaluation on the validation set")
+        val_results = evaluate(
+            model, dataloader_val, postprocess=postprocess, progress=True, **metrics
+        )
+        logging.info(f"Validation AUC: {val_results['roc_auc_score']}")
+
         logging.info("Running evaluation on the test set")
-        eval_results = evaluate(
+        test_results = evaluate(
             model, dataloader_test, postprocess=postprocess, progress=True, **metrics
         )
+        logging.info(f"Test AUC: {test_results['roc_auc_score']}")
 
         if args.cam:
             logging.info(f"Obtaining GradCAM")
@@ -244,7 +256,7 @@ def main(args):
                                 to_gif(img, sal_img, f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_saliency.gif", saliency=True)
                                 to_gif(img, back_img, f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_guided.gif", saliency=True)
 
-        torch.save(eval_results, "test_results.pt")
+        torch.save(test_results, "test_results.pt")
         logging.info("Testing finished, exitting")
         sys.exit(0)
 
