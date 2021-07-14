@@ -1,4 +1,4 @@
-# %%
+#%%
 
 from functools import partial
 from typing import Dict
@@ -24,7 +24,7 @@ from util.box_ops import box_cxcywh_to_xyxy, generalized_box_iou
 from einops import rearrange
 import sys
 from data.oai import build, CropDataset, MOAKSDataset
-from util.cam import MenisciCAM, to_gif, MenisciSaliency
+from util.cam import MenisciCAM, to_gif, MenisciSaliency, GuidedBackprop
 
 
 REGION = {0: "anterior_horn", 1: "body", 2: "posterior_horn"}
@@ -156,12 +156,13 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
 def main(args):
     _set_random_seed(50899)
     dataloader_train, dataloader_val, dataloader_test = build(args)
+
     device = torch.device(args.device)
 
     logging.info(f"Running On Device: {device}")
-    
+
     model = instantiate(args.model)
-    
+
     criterion = MixCriterion(**args.weights)
     model.to(device)
 
@@ -198,7 +199,9 @@ def main(args):
         "confusion_matrix": partial(confusion_matrix, names=names),
     }
     logging.info(f"Running: {model}")
-    logging.info(f'Running model on dataset {"with" if isinstance(dataloader_train.dataset, CropDataset) else "without"} cropping\n')
+    logging.info(
+        f'Running model on dataset {"with" if isinstance(dataloader_train.dataset, CropDataset) else "without"} cropping\n'
+    )
 
     metrics = {key: METRICS[key] for key in args.metrics}
 
@@ -221,6 +224,7 @@ def main(args):
                 postprocess=postprocess,
             )
             saliency = MenisciSaliency(model, use_cuda=args.device == "cuda", postprocess=postprocess)
+            g_back = GuidedBackprop(model, use_cuda=args.device == "cuda", postprocess=postprocess,logging=logging)
 
             for bs_img, bs_ann in dataloader_test:
                 for i in range(len(bs_img)):
@@ -234,11 +238,11 @@ def main(args):
                             for idx in np.argwhere(men_labels>0):
                                 cam_img = cam(img, meniscus, idx).squeeze().numpy()
                                 sal_img = saliency(img, meniscus, idx).detach().cpu().squeeze().numpy()
-                                mixed = sal_img * cam_img
+                                back_img = g_back.forward(img, meniscus, idx).detach().cpu().squeeze().numpy()
                                 np.save(f"{ann['image_id'].item()}_{meniscus}_cam", cam_img)
                                 to_gif(img, cam_img, f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_gradcam.gif")
                                 to_gif(img, sal_img, f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_saliency.gif", saliency=True)
-                                to_gif(img, mixed, f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_guided.gif")
+                                to_gif(img, back_img, f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_guided.gif", saliency=True)
 
         torch.save(eval_results, "test_results.pt")
         logging.info("Testing finished, exitting")
@@ -335,6 +339,7 @@ def main(args):
                 },
                 "checkpoint.ckpt",
             )
+    return best_val_loss
 
 
 if __name__ == "__main__":
