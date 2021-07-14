@@ -36,6 +36,10 @@ from data.oai import build, CropDataset, MOAKSDataset, TSEDataset
 from util.cam import MenisciCAM, to_gif, MenisciSaliency, GuidedBackprop
 
 
+REGION = {0: "anterior_horn", 1: "body", 2: "posterior_horn"}
+LAT_MED = {0: "lateral", 1: "medial"}
+
+
 def _set_random_seed(seed):
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -214,22 +218,22 @@ def main(args):
 
     if args.eval:
 
-        tse_transforms = Compose((ToTensor(), Resize(), Normalize()))
-
-        dataset_tse = TSEDataset(
-            "/scratch/visual/ashestak/oai/v00/data/inputs",
-            "/scratch/visual/ashestak/meniscaltears/data/moaks_tse.json",
-            transforms=tse_transforms,
+        logging.info("Running evaluation on the training set")
+        train_results = evaluate(
+            model, dataloader_train, postprocess=postprocess, progress=True, **metrics
         )
-
-        dataloader_test = DataLoader(
-            dataset_tse, batch_size=4, shuffle=False, num_workers=4
+        logging.info(f"Trainings AUC: {train_results['roc_auc_score']}")
+        logging.info("Running evaluation on the validation set")
+        val_results = evaluate(
+            model, dataloader_val, postprocess=postprocess, progress=True, **metrics
         )
+        logging.info(f"Validation AUC: {val_results['roc_auc_score']}")
 
         logging.info("Running evaluation on the test set")
-        eval_results = evaluate(
+        test_results = evaluate(
             model, dataloader_test, postprocess=postprocess, progress=True, **metrics
         )
+        logging.info(f"Test AUC: {test_results['roc_auc_score']}")
 
         if args.cam:
             logging.info(f"Obtaining GradCAM")
@@ -263,42 +267,14 @@ def main(args):
                             )
                             for idx in np.argwhere(men_labels > 0):
                                 cam_img = cam(img, meniscus, idx).squeeze().numpy()
-                                sal_img = (
-                                    saliency(img, meniscus, idx)
-                                    .detach()
-                                    .cpu()
-                                    .squeeze()
-                                    .numpy()
-                                )
-                                back_img = (
-                                    g_back.forward(img, meniscus, idx)
-                                    .detach()
-                                    .cpu()
-                                    .squeeze()
-                                    .numpy()
-                                )
-                                np.save(
-                                    f"{ann['image_id'].item()}_{meniscus}_cam", cam_img
-                                )
-                                to_gif(
-                                    img,
-                                    cam_img,
-                                    f"{ann['image_id'].item()}_{meniscus}_{idx}cam.gif",
-                                )
-                                to_gif(
-                                    img,
-                                    sal_img,
-                                    f"{ann['image_id'].item()}_{meniscus}_{idx}_saliency.gif",
-                                    saliency=True,
-                                )
-                                to_gif(
-                                    img,
-                                    back_img,
-                                    f"guided_back_cam_{ann['image_id'].item()}_.gif",
-                                    saliency=True,
-                                )
+                                sal_img = saliency(img, meniscus, idx).detach().cpu().squeeze().numpy()
+                                back_img = g_back.forward(img, meniscus, idx).detach().cpu().squeeze().numpy()
+                                np.save(f"{ann['image_id'].item()}_{meniscus}_cam", cam_img)
+                                to_gif(img, cam_img, f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_gradcam.gif")
+                                to_gif(img, sal_img, f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_saliency.gif", saliency=True)
+                                to_gif(img, back_img, f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_guided.gif", saliency=True)
 
-        torch.save(eval_results, "test_results.pt")
+        torch.save(test_results, "test_results.pt")
         logging.info("Testing finished, exitting")
         sys.exit(0)
 
