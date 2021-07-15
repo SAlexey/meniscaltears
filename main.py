@@ -30,6 +30,7 @@ from einops import rearrange
 import sys
 from data.oai import build, CropDataset, MOAKSDataset, MixDataset
 from util.cam import MenisciCAM, to_gif, MenisciSaliency, GuidedBackprop
+from models.resnet import DilationResNet3D
 
 
 REGION = {0: "anterior_horn", 1: "body", 2: "posterior_horn"}
@@ -162,7 +163,10 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
 @hydra.main(config_path=".config/", config_name="config")
 def main(args):
     _set_random_seed(50899)
-    dataloader_train, dataloader_val, dataloader_test = build(args)
+    dataloader_train, dataloader_val, dataloader_test, dataloader_visual = build(args)
+
+    if dataloader_visual is None:
+        dataloader_visual = dataloader_test
 
     if args.mix:
 
@@ -270,7 +274,7 @@ def main(args):
 
             cam = MenisciCAM(
                 model,
-                model.backbone.layer4,
+                model.backbone.layer7 if isinstance(model.backbone, DilationResNet3D) else model.backbone.layer4,
                 use_cuda=args.device == "cuda",
                 postprocess=postprocess,
             )
@@ -283,7 +287,7 @@ def main(args):
                 postprocess=postprocess,
             )
 
-            for bs_img, bs_ann in dataloader_test:
+            for bs_img, bs_ann in dataloader_visual:
                 for i in range(len(bs_img)):
                     img = bs_img[i].unsqueeze(0)
                     ann = dict()
