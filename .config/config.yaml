@@ -1,10 +1,10 @@
 defaults:
-  - model: resnet50
+  - model: resnet50_cropped
 
 # MODEL
 device: cuda
 checkpoint: false # path to the checkpoint
-state_dict: false #best_models/resnet18/best_model.pt # path to the model state_dict (overrides model state_dict in checkpoint)
+state_dict: false # path to the model state_dict (overrides model state_dict in checkpoint)
 load_mlp: true # if false will omit cls_out and box_out and only load backbone state_dict
 eval: false # only run evaluation (uses test set)
 cam: true # run grad cam for menisci (ignored if eval is false)
@@ -21,12 +21,13 @@ crop: false # use cropping dataset and criterion
 # CRITERION
 weights:
   labels: 1
-  boxes: 5
-  giou: 2
-
+    # boxes: 5
+    # giou: 2
+ 
 # DATA
 data_dir: oai/v00/data/inputs
 anns_dir: meniscaltears/data
+tse: false
 binary: true
 multilabel: true
 limit_train_items: false # will take up to limit_train_items training examples
@@ -35,11 +36,11 @@ limit_test_items: false
 
 # TRAINING HPARAMS
 num_epochs: 500
-num_workers: 2
+num_workers: 8
 batch_size: 4
 lr: 0.0001 # default learning rate
-lr_backbone: 0.0001 # cnn learning rate
-lr_head: 0.0001 # mlp learning rate
+lr_backbone: 0.001 # cnn learning rate
+lr_head: 0.001 # mlp learning rate
 lr_drop_step: 50
 lr_drop_rate: 0.5
 window: 20

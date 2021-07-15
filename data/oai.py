@@ -11,6 +11,7 @@ import SimpleITK as sitk
 from scipy import ndimage
 import math
 
+from util.box_ops import box_cxcywh_to_xyxy, denormalize_boxes
 from torch.utils.data import DataLoader
 from .transforms import *
 
@@ -215,7 +216,7 @@ class MOAKSDataset(DatasetBase):
         anns,
         *args,
         binary=True,
-        multilabel=False,
+        multilabel=True,
         transforms=None,
         **kwargs,
     ):
@@ -362,6 +363,8 @@ class MixDataset(Dataset):
         self.dess = MOAKSDataset(
             root,
             anns,
+            binary=True,
+            multilabel=True,
             transforms=Compose(
                 (
                     ToTensor(),
@@ -373,15 +376,20 @@ class MixDataset(Dataset):
         self.tse = MOAKSDataset(
             root,
             anns_tse,
+            binary=True,
+            multilabel=True,
             transforms=Compose(
                 (ToTensor(), RandomInvert(0.15), Normalize(mean=(0.359,), std=(0.278,)))
             ),
         )
 
         self.transform = transforms
+        if self.train:
+            self.pos_weight = (self.dess.pos_weight + self.tse.pos_weight) / 2
+
 
     def __len__(self):
-        return len(self.dess) + len(self.tse)
+        return len(self.dess) + len(self.tse) - 1
 
     def __getitem__(self, idx):
 
@@ -411,9 +419,8 @@ class MixDataset(Dataset):
                 tgt["boxes"] = target["boxes"]
 
         if self.transform is not None:
-
             boxes = box_cxcywh_to_xyxy(tgt["boxes"])
-            tgt["boxes"] = denormalize_boxes(boxes)
+            tgt["boxes"] = denormalize_boxes(boxes, (160, 384, 384))
             img, tgt = self.transform(img, tgt)
 
         return img, tgt
