@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from numbers import Number
 from random import randint, random
 import math
+from skimage.util import invert
 
 
 class Compose(T.Compose):
@@ -183,7 +184,7 @@ class Normalize(object):
 
             tgt = tgt.copy()
 
-            if "boxes" in tgt: 
+            if "boxes" in tgt:
                 boxes = tgt["boxes"]
                 boxes = box_xyxy_to_cxcywh(boxes)
                 boxes = normalize_boxes(boxes, size=tuple(img.size()[-3:]))
@@ -198,6 +199,17 @@ class Resize(object):
 
     def __call__(self, input, tgt=None):
         return resize_volume(input, self.size, tgt=tgt)
+
+
+class RandomInvert(object):
+    def __init__(self, p=0.5):
+        self.p = p
+
+    def __call__(self, img, tgt=None):
+        if random() >= self.p:
+            img = invert(img.numpy())
+            img = torch.from_numpy(img)
+        return img, tgt
 
 
 class RandomResizedBBoxSafeCrop(object):

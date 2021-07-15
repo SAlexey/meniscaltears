@@ -15,11 +15,6 @@ from omegaconf import DictConfig
 import os
 
 
-def _get_hub_dir():
-    return os.path.join(os.environ["SCRATCH_ROOT"], "torchhub")
-
-
-torch.hub.set_dir(_get_hub_dir())
 
 
 def conv3x3x3(

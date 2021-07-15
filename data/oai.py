@@ -297,116 +297,13 @@ class MOAKSDataset(DatasetBase):
 
             _, d, *_ = input.size()
             input = input.flip(1)
-            target["boxes"] = target["boxes"].flip(0)
             z0, y0, x0, z1, y1, x1 = target["boxes"].flip(0).unbind(-1)
             target["boxes"] = torch.stack((d - z1, y0, x0, d - z0, y1, x1), -1)
 
-        # this gives always medial box first and lateral second
-        # need tp flip boxes again such that they match the labels
-
-        target["boxes"] = target["boxes"].flip(0)
-
         if self.transform is not None:
             input, target = self.transform(input, target)
 
         return input, target
-
-
-class TSEDataset(Dataset):
-    def __init__(self, root, anns, transforms=None):
-        self.root = Path(root)
-        with open(anns) as fh:
-            anns = json.load(fh)
-
-        self.anns = [
-            ann for ann in anns if len(ann["boxes"]) == 2 and all(ann["boxes"])
-        ]
-        self.transform = transforms
-
-    def __len__(self):
-        return len(self.anns)
-
-    def __getitem__(self, idx):
-
-        ann = self.anns[idx]
-        input = np.load(self.root / f"{ann['image_id']}.npy")
-        input = torch.from_numpy(input).clip(0, 255).float().unsqueeze(0)
-
-        target = {
-            "image_id": torch.as_tensor(ann["image_id"], dtype=int),
-            "labels": torch.as_tensor(
-                [
-                    [
-                        ann.get("V00MMTLA", 0.0),
-                        ann.get("V00MMTLB", 0.0),
-                        ann.get("V00MMTLP", 0.0),
-                    ],
-                    [
-                        ann.get("V00MMTMA", 0.0),
-                        ann.get("V00MMTMB", 0.0),
-                        ann.get("V00MMTMP", 0.0),
-                    ],
-                ]
-            ),
-            "boxes": torch.as_tensor(ann["boxes"]),
-        }
-
-        target["labels"] = (target["labels"] > 1).float()
-
-        if self.transform is not None:
-            input, target = self.transform(input, target)
-
-        return input, target
-
-
-class MixDataset(Dataset):
-    def __init__(
-        self, root, anns_dess, anns_tse, swap_probability=0.5, transforms=None
-    ) -> None:
-
-        self.root = Path(root)
-
-        with open(anns_dess) as fh:
-            anns_dess = json.load(fh)
-
-        self.anns_dess = [
-            ann for ann in anns_dess if len(ann["boxes"]) == 2 and all(ann["boxes"])
-        ]
-
-        with open(anns_tse) as fh:
-            anns_tse = json.load(fh)
-
-        self.anns_tse = [
-            ann for ann in anns_dess if len(ann["boxes"]) == 2 and all(ann["boxes"])
-        ]
-
-        self.img_id_2_tse_idx = {
-            ann["image_id"]: i for i, ann in enumerate(self.anns_tse)
-        }
-
-        self.swap_probability = swap_probability
-
-    def _return_dess(self, input_dess, target_dess, input_tse=None, target_tse=None):
-        return input_dess, target_dess
-
-    def _swap(self, input_dess, target_dess, input_tse=None, target_tse=None):
-        if input_tse is not None and target_tse is not None:
-            return input_tse, target_tse
-        self._return_dess(input_dess, target_dess, input_tse, target_tse)
-
-    def _mix(self, input_dess, target_dess, input_tse=None, target_tse=None):
-        if input_tse is not None and target_tse is not None:
-            # linear combination of images and targets
-            # labels are the same  but boxes ? (convex hull?)
-            pass
-        else:
-            self._return_dess(input_dess, target_dess, input_tse, target_tse)
-
-    def __len__(self):
-        return len(self.anns_dess)
-
-    def __getitem__(self, idx):
-        ann = self.anns_dess[idx]
 
 
 class DICOMDataset(DatasetBase):
@@ -455,6 +352,63 @@ class DICOMDatasetMasks(DICOMDataset):
         mask = torch.from_numpy(mask)
         boxes = torch.as_tensor(boxes) / torch.as_tensor(mask.shape).repeat(1, 2)
         return mask.unsqueeze(0), boxes
+
+
+class MixDataset(Dataset):
+    def __init__(self, root, anns, anns_tse, train=False, p=0.1, transforms=None):
+        self.train = train
+        self.p = p
+        self.dess = MOAKSDataset(
+            root,
+            anns,
+            transforms=Compose(
+                ToTensor(), RandomInvert(0.3), Normalize(mean=(0.4945), std=(0.3782,))
+            ),
+        )
+        self.tse = MOAKSDataset(
+            root,
+            anns_tse,
+            transforms=Compose(
+                (ToTensor(), RandomInvert(0.3), Normalize(mean=(0.359,), std=(0.278,)))
+            ),
+        )
+
+        self.transform = transforms
+
+    def __len__(self):
+        return len(self.dess) + len(self.tse)
+
+    def __getitem__(self, idx):
+
+        if idx < len(self.dess):
+            img, tgt = self.dess[idx]
+        else:
+            img, tgt = self.tse[idx - len(self.dess)]
+
+        if self.train and random() <= self.p:
+
+            other, target = self[randint(0, len(self))]
+
+            alpha = random()
+            beta = 1 - alpha
+            sign = 1 if random() <= 0.5 else -1
+
+            img = (alpha * img) + (sign * beta * other)
+
+            tgt["labels"] = (alpha * tgt["labels"]) + (sign * beta * target["labels"])
+
+            # renormalize
+
+            img = img - img.mean()
+            img = img / img.std()
+
+            if beta > 0.5:
+                tgt["boxes"] = target["boxes"]
+
+            if self.transforms is not None:
+                img, tgt = self.transform(img, tgt)
+
+        return img, tgt
 
 
 def build(args):
