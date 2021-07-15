@@ -193,7 +193,7 @@ def main(args):
         dataset_val_tse = MOAKSDataset(
             dataloader_val.dataset.root,
             "/scratch/htc/ashestak/meniscaltears/data/tse/val.json",
-            transform=tse_val_transform,
+            transforms=tse_val_transform,
         )
         dataloader_val_tse = DataLoader(
             dataset_val_tse, num_workers=args.num_workers, batch_size=args.batch_size
@@ -202,7 +202,7 @@ def main(args):
         dataset_test_tse = MOAKSDataset(
             dataloader_val.dataset.root,
             "/scratch/htc/ashestak/meniscaltears/data/tse/test.json",
-            transform=tse_val_transform,
+            transforms=tse_val_transform,
         )
 
         dataloader_test_tse = DataLoader(
@@ -448,11 +448,15 @@ def main(args):
 
             # evaluate again on tse dataset only
 
+            pos_weight = dataset_val_tse.pos_weight
+            if isinstance(pos_weight, torch.Tensor):
+                pos_weight = pos_weight.to(device)
+
             eval_results = evaluate(
                 model,
                 dataloader_val_tse,
                 criterion=criterion,
-                criterion_kwargs={"pos_weight": dataset_val_tse.pos_weight},
+                criterion_kwargs={"pos_weight": pos_weight},
                 postprocess=postprocess,
                 **metrics,
             )
@@ -468,10 +472,10 @@ def main(args):
 
             if (metric := "confusion_matrix") in eval_results:
                 for name, value in eval_results[metric].items():
-                    log = [f"{metric:>18} TSE for {name:3}"]
+                    logs = [f"{metric:>18} TSE for {name:3}"]
                     for label, each in zip(("tn", "fp", "fn", "tp"), value.flatten()):
                         log.append(f"{label.capitalize()} [{each:3d}]")
-                    logging.info("|".join(logs))
+                    logging.info(" | ".join(logs))
 
     return best_val_loss
 
