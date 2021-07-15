@@ -18,9 +18,9 @@ fig, big_axes = plt.subplots( figsize=(22.0, 12.0) , nrows=2, ncols=1, sharey=Tr
 # create sub-plots
 for row, big_ax in enumerate(big_axes, start=1):
     if row == 1:
-        big_ax.set_title("Medial Meniscus\n", fontsize=24)
+        big_ax.set_title("Medial Meniscus\n", fontsize=24, fontweight="bold")
     else:
-        big_ax.set_title("Lateral Meniscus\n", fontsize=24)
+        big_ax.set_title("Lateral Meniscus\n", fontsize=24, fontweight="bold")
         
     # Turn off axis lines and ticks of the big subplot 
     # obs alpha is 0 in RGBA string!
