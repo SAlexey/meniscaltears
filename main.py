@@ -478,7 +478,7 @@ def main(args):
                 for name, value in eval_results[metric].items():
                     logs = [f"{metric:>18} TSE for {name:3}"]
                     for label, each in zip(("tn", "fp", "fn", "tp"), value.flatten()):
-                        log.append(f"{label.capitalize()} [{each:3d}]")
+                        logs.append(f"{label.capitalize()} [{each:3d}]")
                     logging.info(" | ".join(logs))
 
     return best_val_loss

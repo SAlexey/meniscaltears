@@ -5,6 +5,7 @@ from typing import Dict, Iterable, Sequence
 import torch
 from torch import nn
 from tqdm import tqdm
+from sklearn.metrics import roc_auc_score
 
 from util.misc import SmoothedValue, _reduce, _to_device, _get_model_device
 import logging
@@ -43,6 +44,9 @@ def evaluate(
     if progress:
         loader = tqdm(loader)
 
+    med_lat_pred = []
+    med_lat_target = []
+
     with torch.no_grad():
         for input, target in loader:
             input = input.to(_get_model_device(model))
@@ -58,6 +62,8 @@ def evaluate(
 
             targets.append(target)
             outputs.append({k: v.detach().cpu() for k, v in output.items()})
+            med_lat_pred.append(torch.max(output["labels"], dim=-1))
+            med_lat_target.append(torch.max(targets["labels"], dim=-1))
 
             if criterion is not None:
                 target = {k: v.to(device) for k, v in target.items()}
@@ -69,6 +75,8 @@ def evaluate(
 
                 if loss_dict:
                     losses.append({k: v.detach().cpu() for k, v in loss_dict.items()})
+    print(med_lat_pred, med_lat_target)
+    #roc_auc_score()
 
     outputs = _reduce(outputs)
     targets = _reduce(targets)
