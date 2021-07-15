@@ -389,21 +389,21 @@ def main(args):
 
             if metric in eval_results:
 
-                logs = [metric]
+                logs = [f"{metric:>30}"]
 
                 for name, value in eval_results[metric].items():
 
-                    logs.append(f"{name:17} [{value:.4f}]")
+                    logs.append(f"{name} [{value:.4f}]")
 
                 logging.info(" | ".join(logs))
 
-        if "confusion_matrix" in eval_results:
+        if (metric := "confusion_matrix") in eval_results:
+            for name, value in eval_results[metric].items():
+                log = [f"{metric:>26} {name:3}"]
+                for label, each in zip(("tn", "fp", "fn", "tp"), value.flatten()):
+                    log.append(f"{label.capitalize()} [{each:3d}]")
+                logging.info("|".join(logs))
 
-            for name, value in eval_results["confusion_matrix"].items():
-                tn, fp, fn, tp = value.flatten()
-                logging.info(
-                    f"confusion matrix for {name:17} TP [{tp:3d}] | TN [{tn:3d}] | FP [{fp:3d}] | FN [{fn:3d}]"
-                )
         # weighting = pos_weight.detach().cpu().numpy().flatten()
         # weighting /= weighting.sum()
         # print(weighting)
@@ -447,22 +447,21 @@ def main(args):
                 **metrics,
             )
 
-            if "roc_auc_score" in eval_results:
-                logs = ["TSE roc_auc_score"]
+            if (metric := "roc_auc_score") in eval_results:
+                logs = [f"{metric:>26} TSE"]
 
-                for name, value in eval_results["roc_auc_score"].items():
+                for name, value in eval_results[metric].items():
 
-                    logs.append(f"{name:17} [{value:.4f}]")
+                    logs.append(f"{name:3} [{value:.4f}]")
 
                 logging.info(" | ".join(logs))
 
-            if "confusion_matrix" in eval_results:
-
-                for name, value in eval_results["confusion_matrix"].items():
-                    tn, fp, fn, tp = value.flatten()
-                    logging.info(
-                        f"TSE confusion matrix for {name:17} TP [{tp:3d}] | TN [{tn:3d}] | FP [{fp:3d}] | FN [{fn:3d}]"
-                    )
+            if (metric := "confusion_matrix") in eval_results:
+                for name, value in eval_results[metric].items():
+                    log = [f"{metric:>18} TSE for {name:3}"]
+                    for label, each in zip(("tn", "fp", "fn", "tp"), value.flatten()):
+                        log.append(f"{label.capitalize()} [{each:3d}]")
+                    logging.info("|".join(logs))
 
     return best_val_loss
 
