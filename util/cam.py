@@ -99,7 +99,6 @@ class GradCAM(nn.Module):
 
         result = F.interpolate(cam, input_tensor.shape[-3:], mode="trilinear")
 
-
         return result
 
 
@@ -137,20 +136,30 @@ class MenisciCAM(GradCAM):
         return cam
 
 
-def to_gif(img, heatmap, out_path, saliency=False):
+def to_gif(img, heatmap, out_path, cam_type="grad"):
     tmp_files = []
     desc = []
+    assert cam_type in ["grad", "saliency", "back"]
 
-    if not saliency:
+    if cam_type=="grad":
         heatmap = (heatmap - heatmap.min())/(heatmap.max()-heatmap.min())
         alpha = np.ones(heatmap.shape)
-        alpha[heatmap<0.85] = 0
-        alpha[heatmap>=0.85] = .5
-        heatmap[heatmap<0.85] = 0.85
+        alpha[heatmap<0.1] = 0
+        alpha[heatmap>=0.1] = .5
+        heatmap[heatmap<0.1] = 0.1
         cmap = "jet"
-    else:
+    elif cam_type=="saliency":
         alpha = [.5] * img.shape[2]
         cmap = "hot"
+    elif cam_type == "back":
+        heatmap = (heatmap - heatmap.mean())/(heatmap.std())
+        alpha = np.ones(heatmap.shape)
+        percentile = np.percentile(heatmap, 99)
+        alpha[heatmap<percentile] = 0
+        alpha[heatmap>=percentile] = .5
+        heatmap[heatmap<percentile] = percentile
+        cmap="hot"
+
 
     for n in range(img.shape[2]):
         fd, path = tempfile.mkstemp(suffix=".png")

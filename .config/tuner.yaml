@@ -3,11 +3,12 @@ defaults:
 
 
 model:
-  _target_: models.resnet.DetNet3D
+  _target_: models.resnet.ClsNet3D
   backbone: resnet50_3d
   cls_output_dim: 6
   cls_hidden_dim: 2048
   cls_num_layers: 3
+  replace_stride_with_dilation: [True, True, True]
   dropout: ??
   cls_dropout: ??
 batch_size: ??
@@ -24,7 +25,7 @@ hydra:
 
       experiment:
         # Default to minimize, set to false to maximize
-        minimize: true
+        minimize: false
 
       params:
         model.dropout:
@@ -38,10 +39,10 @@ hydra:
           bounds: [2, 64]
         lr_head:
           type: range 
-          bounds: [0.01, 0.00001]
+          bounds: [0.01, 0.0001]
         lr_backbone:
           type: range
-          bounds: [0.01, 0.00001]
+          bounds: [0.01, 0.0001]
 
 
 # MODEL
@@ -72,6 +73,7 @@ data_dir: oai/v00/data/inputs
 anns_dir: meniscaltears/data
 binary: true
 multilabel: true
+tse: true
 
 limit_train_items: false # will take up to limit_train_items training examples
 limit_val_items: false # will take up to limit_train_items validation examples
