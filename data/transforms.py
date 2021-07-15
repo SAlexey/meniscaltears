@@ -206,7 +206,7 @@ class RandomInvert(object):
         self.p = p
 
     def __call__(self, img, tgt=None):
-        if random() >= self.p:
+        if random() <= self.p:
             img = invert(img.numpy())
             img = torch.from_numpy(img)
         return img, tgt

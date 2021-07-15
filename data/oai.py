@@ -363,14 +363,18 @@ class MixDataset(Dataset):
             root,
             anns,
             transforms=Compose(
-                (ToTensor(), RandomInvert(0.3), Normalize(mean=(0.4945), std=(0.3782,)))
+                (
+                    ToTensor(),
+                    RandomInvert(0.15),
+                    Normalize(mean=(0.4945), std=(0.3782,)),
+                )
             ),
         )
         self.tse = MOAKSDataset(
             root,
             anns_tse,
             transforms=Compose(
-                (ToTensor(), RandomInvert(0.3), Normalize(mean=(0.359,), std=(0.278,)))
+                (ToTensor(), RandomInvert(0.15), Normalize(mean=(0.359,), std=(0.278,)))
             ),
         )
 
@@ -435,7 +439,7 @@ def build(args):
     assert anns_dir.exists(), "Provided annotations directory doesn't exist!"
 
     to_tensor = ToTensor()
-    
+
     if args.tse:
         normalize = Normalize(mean=(0.35910480707595), std=(0.27756012297851207,))
     else:
