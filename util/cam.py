@@ -274,6 +274,7 @@ class GuidedBackprop():
                 module.register_forward_hook(relu_forward_hook_function)
 
     def forward(self, input_image, target_label, region):
+        
         if self.use_cuda:
             input_image = input_image.cuda()
         # Zero gradients

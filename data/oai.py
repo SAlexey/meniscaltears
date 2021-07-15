@@ -1,5 +1,6 @@
 #%%
 import os
+from util.box_ops import box_cxcywh_to_xyxy, denormalize_boxes
 import torch
 from torch.utils.data import Dataset
 import numpy as np
@@ -362,7 +363,7 @@ class MixDataset(Dataset):
             root,
             anns,
             transforms=Compose(
-                ToTensor(), RandomInvert(0.3), Normalize(mean=(0.4945), std=(0.3782,))
+                (ToTensor(), RandomInvert(0.3), Normalize(mean=(0.4945), std=(0.3782,)))
             ),
         )
         self.tse = MOAKSDataset(
@@ -405,8 +406,11 @@ class MixDataset(Dataset):
             if beta > 0.5:
                 tgt["boxes"] = target["boxes"]
 
-            if self.transforms is not None:
-                img, tgt = self.transform(img, tgt)
+        if self.transform is not None:
+
+            boxes = box_cxcywh_to_xyxy(tgt["boxes"])
+            tgt["boxes"] = denormalize_boxes(boxes)
+            img, tgt = self.transform(img, tgt)
 
         return img, tgt
 
