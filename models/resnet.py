@@ -20,7 +20,7 @@ import os
 
 
 def conv3x3x3(
-    in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, dilation: int = 1
+    in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, dilation: int = 1, padding = None
 ) -> nn.Conv3d:
     """3x3x3 convolution with padding"""
     return nn.Conv3d(
@@ -28,7 +28,7 @@ def conv3x3x3(
         out_planes,
         kernel_size=3,
         stride=stride,
-        padding=dilation,
+        padding=dilation if not padding else padding,
         groups=groups,
         bias=False,
         dilation=dilation,
