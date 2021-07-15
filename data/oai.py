@@ -1,5 +1,6 @@
 #%%
 import os
+from util.box_ops import box_cxcywh_to_xyxy, denormalize_boxes
 import torch
 from torch.utils.data import Dataset
 import numpy as np
@@ -10,6 +11,7 @@ import SimpleITK as sitk
 from scipy import ndimage
 import math
 
+from util.box_ops import box_cxcywh_to_xyxy, denormalize_boxes
 from torch.utils.data import DataLoader
 from .transforms import *
 
@@ -214,7 +216,7 @@ class MOAKSDataset(DatasetBase):
         anns,
         *args,
         binary=True,
-        multilabel=False,
+        multilabel=True,
         transforms=None,
         **kwargs,
     ):
@@ -361,33 +363,55 @@ class MixDataset(Dataset):
         self.dess = MOAKSDataset(
             root,
             anns,
+            binary=True,
+            multilabel=True,
             transforms=Compose(
-                ToTensor(), RandomInvert(0.3), Normalize(mean=(0.4945), std=(0.3782,))
+                (
+                    ToTensor(),
+                    RandomInvert(0.15),
+                    Resize((160, 384, 384)),
+                    Normalize(mean=(0.4945), std=(0.3782,)),
+                )
             ),
         )
         self.tse = MOAKSDataset(
             root,
             anns_tse,
+            binary=True,
+            multilabel=True,
             transforms=Compose(
-                (ToTensor(), RandomInvert(0.3), Normalize(mean=(0.359,), std=(0.278,)))
+                (
+                    ToTensor(),
+                    RandomInvert(0.15),
+                    Resize((160, 384, 384)),
+                    Normalize(mean=(0.359,), std=(0.278,)),
+                )
             ),
         )
 
         self.transform = transforms
+        if self.train:
+            self.pos_weight = (self.dess.pos_weight + self.tse.pos_weight) / 2
 
     def __len__(self):
-        return len(self.dess) + len(self.tse)
+        return len(self.dess) + len(self.tse) - 1
 
     def __getitem__(self, idx):
 
-        if idx < len(self.dess):
+        dess = idx < len(self.dess)
+
+        if dess:
             img, tgt = self.dess[idx]
         else:
             img, tgt = self.tse[idx - len(self.dess)]
 
         if self.train and random() <= self.p:
 
-            other, target = self[randint(0, len(self))]
+            if dess:
+                other, target = self.tse[randint(0, len(self.tse) - 1)]
+
+            else:
+                other, target = self.dess[randint(0, len(self.dess) - 1)]
 
             alpha = random()
             beta = 1 - alpha
@@ -405,8 +429,10 @@ class MixDataset(Dataset):
             if beta > 0.5:
                 tgt["boxes"] = target["boxes"]
 
-            if self.transforms is not None:
-                img, tgt = self.transform(img, tgt)
+        if self.transform is not None:
+            boxes = box_cxcywh_to_xyxy(tgt["boxes"])
+            tgt["boxes"] = denormalize_boxes(boxes, (160, 384, 384))
+            img, tgt = self.transform(img, tgt)
 
         return img, tgt
 
@@ -431,7 +457,7 @@ def build(args):
     assert anns_dir.exists(), "Provided annotations directory doesn't exist!"
 
     to_tensor = ToTensor()
-    
+
     if args.tse:
         normalize = Normalize(mean=(0.35910480707595), std=(0.27756012297851207,))
     else:
