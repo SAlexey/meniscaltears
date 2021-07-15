@@ -301,7 +301,9 @@ class CropIMG(object):
         resize image
         """
         _assert_img(img, size=size)
-        img = F.interpolate(img.unsqueeze(0), size).squeeze(0)
+        img = F.interpolate(
+            img.unsqueeze(0), size, mode="trilinear", align_corners=False
+            ).squeeze(0)
         return img
 
     def crop_volume(self, img, crop):
