@@ -526,7 +526,7 @@ CONFIG = {
     "resnet18_3d": (resnet18_3d, 512),
     "resnet34_3d": (resnet34_3d, 512),
     "resnet50_3d": (resnet50_3d, 2048),
-    "dilated_resnet26_3d": (dilated_resnet26_3d, 2048)
+    "dilated_resnet26_3d": (dilated_resnet26_3d, 512)
 }
 
 

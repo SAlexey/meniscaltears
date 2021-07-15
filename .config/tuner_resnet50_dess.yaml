@@ -4,11 +4,11 @@ defaults:
 
 model:
   _target_: models.resnet.ClsNet3D
-  backbone: dilated_resnet26_3d
+  backbone: resnet50_3d
   cls_output_dim: 6
   cls_hidden_dim: 2048
   cls_num_layers: 3
-  intermediate_layer: layer7
+  replace_stride_with_dilation: [True, True, True]
   dropout: ??
   cls_dropout: ??
 batch_size: ??

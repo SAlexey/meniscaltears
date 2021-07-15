@@ -279,6 +279,8 @@ def main(args):
         )
         logging.info(f"Test AUC: {test_results['roc_auc_score']}")
 
+        logging.info(f"Test AUC | anywhere: {test_results['anywhere_auc']} | medial: {test_results['med_auc']} | lateral: {test_results['lat_auc']}")
+
         if args.cam:
             logging.info(f"Obtaining GradCAM")
 
