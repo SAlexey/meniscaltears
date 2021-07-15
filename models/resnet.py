@@ -1,4 +1,6 @@
 from functools import partial
+
+from torch.functional import norm
 from einops.einops import rearrange
 import torch
 from torch import nn
@@ -125,6 +127,57 @@ class Bottleneck3D(nn.Module):
         out = self.relu(out)
 
         return out
+
+
+
+
+class DilationBottleneck3D(nn.Module):
+    expansion = 1
+    
+    def __init__(
+        self,
+        inplanes: int,
+        planes: int,
+        stride: int = 1,
+        downsample: Optional[nn.Module] = None,
+        dilation = (1, 1),
+        norm_layer: Optional[Callable[..., nn.Module]] = None,
+        residual=True
+    ) -> None:
+        super(Bottleneck3D, self).__init__()
+        if norm_layer is None:
+            norm_layer = nn.BatchNorm3d
+        # Both self.conv2 and self.downsample layers downsample the input when stride != 1
+        self.conv1 = conv3x3x3(inplanes, planes, stride,
+                             padding=dilation[0], dilation=dilation[0])
+        self.bn1 = norm_layer(planes)
+        self.conv2 = conv3x3x3(planes, planes,
+                             padding=dilation[1], dilation=dilation[1])
+        self.bn2 = norm_layer(planes)
+        self.relu = nn.ReLU(inplace=True)
+        self.downsample = downsample
+        self.residual = residual
+        self.stride = stride
+
+
+    def forward(self, x: Tensor) -> Tensor:
+        identity = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+
+        if self.downsample is not None:
+            identity = self.downsample(x)
+        if self.residual:
+            out += identity
+        out = self.relu(out)
+
+        return out
+
 
 
 def resnet18_3d(*, block=BasicBlock3D, norm_layer=nn.BatchNorm3d, **kwargs) -> ResNet:
@@ -276,6 +329,178 @@ class ResNet3D(nn.Module):
         return self._forward_impl(x)
 
 
+def dilated_resnet26_3d(*, block=DilationBottleneck3D, norm_layer=nn.BatchNorm3d, **kwargs) -> ResNet:
+    return DilationResNet3D(block, [1, 1, 2, 2, 2, 2, 1, 1], norm_layer=norm_layer, **kwargs)
+
+
+
+class DilationResNet3D(nn.Module):
+
+    def __init__(
+        self,
+        block: BasicBlock,
+        layers: List[int],
+        channels=(16, 32, 64, 128, 256, 512, 512, 512),
+        num_classes: int = 1000,
+        norm_layer: Optional[Callable[..., nn.Module]] = None,
+        dropout: float = 0.0,
+    ) -> None:
+        super().__init__()
+
+        self.inplanes = channels[0]
+
+        if norm_layer is None:
+            norm_layer = nn.BatchNorm3d
+        self._norm_layer = norm_layer
+
+        self.conv1 = nn.Conv3d(
+            1, channels[0], kernel_size=7, stride=1, 
+            padding=3, bias=False
+        )
+        self.bn1 = norm_layer(channels[0])
+        self.relu = nn.ReLU(inplace=True)
+
+        self.layer0 = self._make_layer(
+            block=block, 
+            planes=channels[0], 
+            blocks=layers[0],
+            stride=1
+        )
+        self.layer1 = self._make_layer(
+            block=block, 
+            planes=channels[1], 
+            blocks=layers[1],
+            stride=2
+        )
+        self.layer2 = self._make_layer(
+            block=block, 
+            planes=channels[2], 
+            blocks=layers[2],
+            stride=2
+        )
+        self.layer3 = self._make_layer(
+            block=block, 
+            planes=channels[3], 
+            blocks=layers[3],
+            stride=2
+        )
+        self.layer4 = self._make_layer(
+            block=block, 
+            planes=channels[4], 
+            blocks=layers[4],
+            dilation=2,
+            new_level=False
+        )
+        self.layer5 = self._make_layer(
+            block=block, 
+            planes=channels[5], 
+            dilation=4, 
+            blocks=layers[5],
+            new_level=False
+        )
+        self.layer6 = self._make_layer(
+            block=block, 
+            planes=channels[6], 
+            dilation=2, 
+            blocks=layers[6],
+            new_level=False, 
+            residual=False
+        )
+        self.layer7 = self._make_layer(
+            block=block,  
+            planes=channels[7], 
+            dilation=1, 
+            blocks=layers[7],
+            residual=False,
+            new_level=False,
+        )
+
+        self.avgpool = nn.AdaptiveAvgPool3d((1, 1, 1))
+        self.dropout = nn.Dropout(p=dropout)
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv3d):
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
+            elif isinstance(m, (nn.BatchNorm3d, nn.GroupNorm)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
+
+    def _make_layer(
+        self, 
+        block: BasicBlock3D,
+        planes: int,
+        blocks: int, 
+        stride: int = 1,
+        dilation: int = 1,
+        new_level: bool = True, 
+        residual: bool = True,
+    ) -> nn.Sequential:
+        assert dilation == 1 or dilation % 2 == 0
+        downsample = None
+        norm_layer = self._norm_layer
+        if stride != 1 or self.inplanes != planes * block.expansion:
+            downsample = nn.Sequential(
+                conv1x1x1(
+                    self.inplanes, planes * block.expansion, stride=stride
+                    ),
+                norm_layer(planes * block.expansion),
+            )
+
+        layers = []
+        layers.append(
+            block(
+                self.inplanes,
+                planes,
+                stride=stride,
+                dilation=(1, 1) if dilation == 1 else (
+                    dilation // 2 if new_level else dilation, dilation),
+                downsample=downsample,
+                norm_layer=norm_layer,
+                residual=residual
+            )
+        )
+        self.inplanes = planes * block.expansion
+        for _ in range(1, blocks):
+            layers.append(
+                block(
+                    self.inplanes,
+                    planes,
+                    dilation=(dilation, dilation),
+                    norm_layer=norm_layer,
+                    residual=residual
+                )
+            )
+
+        return nn.Sequential(*layers)
+        
+
+    def _forward_impl(self, x: Tensor) -> Tensor:
+        # See note [TorchScript super()]
+        # x -> (BS, 1, 160, 300, 300)
+        x = self.conv1(x)  # x -> (BS, 16, 80, 150, 150)
+        x = self.bn1(x)
+        x = self.relu(x)
+
+        x = self.layer0(x)  # x -> (BS, 128, 20, 38, 38)
+        x = self.layer1(x)  # x -> (BS, 128, 20, 38, 38)
+        x = self.layer2(x)  # x -> (BS, 256, 10, 19, 19)
+        x = self.layer3(x)  # x -> (BS, )
+        x = self.layer4(x)  # x -> (BS, 512, 5, 10, 10)
+        x = self.layer5(x)  # x -> (BS, 128, 20, 38, 38)
+        x = self.layer6(x)  # x -> (BS, 256, 10, 19, 19)
+        x = self.layer7(x)  # x -> (BS, )
+
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        x = self.dropout(x)
+
+        return x
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self._forward_impl(x)
+
+
 def _grayscale_resnet(name, *args, **kwargs):
     resnet = getattr(models, name)(*args, **kwargs)
     old_conv1 = resnet.conv1
@@ -303,6 +528,7 @@ CONFIG = {
     "resnet18_3d": (resnet18_3d, 512),
     "resnet34_3d": (resnet34_3d, 512),
     "resnet50_3d": (resnet50_3d, 2048),
+    "dilated_resnet26_3d": (dilated_resnet26_3d, 2048)
 }
 
 
@@ -505,15 +731,14 @@ class ClsNet3D(nn.Module):
         cls_hidden_dim=2048,
         cls_num_layers=1,
         cls_dropout=0.0,
+        intermediate_layer="layer4",
         **kwargs,
     ):
-
         super().__init__()
 
-        _, num_channels = CONFIG[backbone]
         backbone, num_channels = CONFIG[backbone]
         backbone = backbone(*args, **kwargs)
-        self.backbone = IntermediateLayerGetter(backbone, {"layer4": "features"})
+        self.backbone = IntermediateLayerGetter(backbone, {intermediate_layer: "features"})
         self.pool = nn.AdaptiveAvgPool3d(1)
         self.dropout = nn.Dropout(p=dropout)
         self.out_cls = MLP(
