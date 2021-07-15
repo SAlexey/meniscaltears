@@ -402,7 +402,7 @@ def main(args):
                 log = [f"{metric:>26} {name:3}"]
                 for label, each in zip(("tn", "fp", "fn", "tp"), value.flatten()):
                     log.append(f"{label.capitalize()} [{each:3d}]")
-                logging.info("|".join(logs))
+                logging.info(" | ".join(log))
 
         # weighting = pos_weight.detach().cpu().numpy().flatten()
         # weighting /= weighting.sum()
