@@ -296,7 +296,6 @@ def main(args):
                                     img,
                                     back_img,
                                     f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_guided.gif",
-                                    saliency=True,
                                     cam_type="back"
                                 )
 
