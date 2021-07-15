@@ -2,7 +2,13 @@
 
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
-from data.transforms import RandomResizedBBoxSafeCrop, Normalize, Compose
+from data.transforms import (
+    RandomResizedBBoxSafeCrop,
+    Normalize,
+    Compose,
+    Resize,
+    ToTensor,
+)
 
 from functools import partial
 from typing import Dict
@@ -184,10 +190,14 @@ def main(args):
             batch_size=args.batch_size,
         )
 
+        tse_val_transform = Compose(
+            (ToTensor(), Resize((160, 384, 384)), Normalize(mean=(0.359), std=(0.278,)))
+        )
+
         dataset_val_tse = MOAKSDataset(
             dataloader_val.dataset.root,
             "/scratch/htc/ashestak/meniscaltears/data/tse/val.json",
-            transform=dataloader_val.dataset.transform,
+            transforms=tse_val_transform,
         )
         dataloader_val_tse = DataLoader(
             dataset_val_tse, num_workers=args.num_workers, batch_size=args.batch_size
@@ -196,10 +206,10 @@ def main(args):
         dataset_test_tse = MOAKSDataset(
             dataloader_val.dataset.root,
             "/scratch/htc/ashestak/meniscaltears/data/tse/test.json",
-            transform=dataloader_val.dataset.transform,
+            transforms=tse_val_transform,
         )
 
-        dataloader_test_tse = MOAKSDataset(
+        dataloader_test_tse = DataLoader(
             dataset_test_tse, num_workers=args.num_workers, batch_size=args.batch_size
         )
 
@@ -393,21 +403,21 @@ def main(args):
 
             if metric in eval_results:
 
-                logs = [metric]
+                logs = [f"{metric:>30}"]
 
                 for name, value in eval_results[metric].items():
 
-                    logs.append(f"{name:17} [{value:.4f}]")
+                    logs.append(f"{name} [{value:.4f}]")
 
                 logging.info(" | ".join(logs))
 
-        if "confusion_matrix" in eval_results:
+        if (metric := "confusion_matrix") in eval_results:
+            for name, value in eval_results[metric].items():
+                log = [f"{metric:>26} {name:3}"]
+                for label, each in zip(("tn", "fp", "fn", "tp"), value.flatten()):
+                    log.append(f"{label.capitalize()} [{each:3d}]")
+                logging.info(" | ".join(log))
 
-            for name, value in eval_results["confusion_matrix"].items():
-                tn, fp, fn, tp = value.flatten()
-                logging.info(
-                    f"confusion matrix for {name:17} TP [{tp:3d}] | TN [{tn:3d}] | FP [{fp:3d}] | FN [{fn:3d}]"
-                )
         # weighting = pos_weight.detach().cpu().numpy().flatten()
         # weighting /= weighting.sum()
         # print(weighting)
@@ -442,31 +452,34 @@ def main(args):
 
             # evaluate again on tse dataset only
 
+            pos_weight = dataset_val_tse.pos_weight
+            if isinstance(pos_weight, torch.Tensor):
+                pos_weight = pos_weight.to(device)
+
             eval_results = evaluate(
                 model,
                 dataloader_val_tse,
                 criterion=criterion,
-                criterion_kwargs={"pos_weight": dataset_val_tse.pos_weight},
+                criterion_kwargs={"pos_weight": pos_weight},
                 postprocess=postprocess,
                 **metrics,
             )
 
-            if "roc_auc_score" in eval_results:
-                logs = ["TSE roc_auc_score"]
+            if (metric := "roc_auc_score") in eval_results:
+                logs = [f"{metric:>26} TSE"]
 
-                for name, value in eval_results["roc_auc_score"].items():
+                for name, value in eval_results[metric].items():
 
-                    logs.append(f"{name:17} [{value:.4f}]")
+                    logs.append(f"{name:3} [{value:.4f}]")
 
                 logging.info(" | ".join(logs))
 
-            if "confusion_matrix" in eval_results:
-
-                for name, value in eval_results["confusion_matrix"].items():
-                    tn, fp, fn, tp = value.flatten()
-                    logging.info(
-                        f"TSE confusion matrix for {name:17} TP [{tp:3d}] | TN [{tn:3d}] | FP [{fp:3d}] | FN [{fn:3d}]"
-                    )
+            if (metric := "confusion_matrix") in eval_results:
+                for name, value in eval_results[metric].items():
+                    logs = [f"{metric:>18} TSE for {name:3}"]
+                    for label, each in zip(("tn", "fp", "fn", "tp"), value.flatten()):
+                        log.append(f"{label.capitalize()} [{each:3d}]")
+                    logging.info(" | ".join(logs))
 
     return best_val_loss
 
