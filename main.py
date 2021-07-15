@@ -143,7 +143,7 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
     if "scheduler" in state_dict and scheduler is not None:
         scheduler.load_state_dict(state_dict["scheduler"])
 
-    best_val_loss = state_dict.get("best_val_loss", kwargs.get("best_val_loss", np.inf))
+    best_val_loss = state_dict.get("best_val_loss", kwargs.get("best_val_loss", -np.inf))
     start = state_dict.get("epoch", kwargs.get("epoch", 0))
 
     if start > 0:
@@ -199,6 +199,7 @@ def main(args):
         "confusion_matrix": partial(confusion_matrix, names=names),
     }
     logging.info(f"Running: {model}")
+    logging.info(f"Running model on {'TSE' if args.tse else 'DESS'} sequence")
     logging.info(
         f'Running model on dataset {"with" if isinstance(dataloader_train.dataset, CropDataset) else "without"} cropping\n'
     )
@@ -209,11 +210,6 @@ def main(args):
 
     if args.eval:
 
-        logging.info("Running evaluation on the training set")
-        train_results = evaluate(
-            model, dataloader_train, postprocess=postprocess, progress=True, **metrics
-        )
-        logging.info(f"Trainings AUC: {train_results['roc_auc_score']}")
         logging.info("Running evaluation on the validation set")
         val_results = evaluate(
             model, dataloader_val, postprocess=postprocess, progress=True, **metrics
@@ -252,9 +248,9 @@ def main(args):
                                 sal_img = saliency(img, meniscus, idx).detach().cpu().squeeze().numpy()
                                 back_img = g_back.forward(img, meniscus, idx).detach().cpu().squeeze().numpy()
                                 np.save(f"{ann['image_id'].item()}_{meniscus}_cam", cam_img)
-                                to_gif(img, cam_img, f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_gradcam.gif")
-                                to_gif(img, sal_img, f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_saliency.gif", saliency=True)
-                                to_gif(img, back_img, f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_guided.gif", saliency=True)
+                                to_gif(img, cam_img, f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_gradcam.gif", cam_type="grad")
+                                to_gif(img, sal_img, f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_saliency.gif", cam_type="back")
+                                to_gif(img, back_img, f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_guided.gif", cam_type="back")
 
         torch.save(test_results, "test_results.pt")
         logging.info("Testing finished, exitting")
@@ -328,9 +324,13 @@ def main(args):
                 logging.info(
                     f"confusion matrix for {name} TP [{tp}] | TN [{tn}] | FP [{fp}] | FN [{fn}]"
                 )
+        #weighting = pos_weight.detach().cpu().numpy().flatten()
+        #weighting /= weighting.sum()
+        #print(weighting)
 
-        if epoch_loss < best_val_loss:
-            best_val_loss = epoch_loss
+        epoch_eval = np.fromiter(eval_results["roc_auc_score"].values(), dtype=float).mean() #* weighting
+        if epoch_eval > best_val_loss:
+            best_val_loss = epoch_eval
 
             torch.save(model.state_dict(), "best_model.pt")
             torch.save(eval_results, "best_model_eval_results.ps")

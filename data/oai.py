@@ -470,11 +470,18 @@ def build(args):
     data_dir = root / args.data_dir
     anns_dir = root / args.anns_dir
 
+    if args.tse:
+        anns_dir = anns_dir / "tse"
+
     assert data_dir.exists(), "Provided data directory doesn't exist!"
     assert anns_dir.exists(), "Provided annotations directory doesn't exist!"
 
     to_tensor = ToTensor()
-    normalize = Normalize(mean=(0.4945), std=(0.3782,))
+    
+    if args.tse:
+        normalize = Normalize(mean=(0.35910480707595), std=(0.27756012297851207,))
+    else:
+        normalize = Normalize(mean=(0.4945), std=(0.3782,))
 
     if args.crop:
         train_transforms = Compose([to_tensor, CropIMG(), normalize])
