@@ -195,7 +195,7 @@ def main(args):
             transform=dataloader_val.dataset.transform,
         )
 
-        dataloader_test_tse = MOAKSDataset(
+        dataloader_test_tse = DataLoader(
             dataset_test_tse, num_workers=args.num_workers, batch_size=args.batch_size
         )
 
