@@ -2,7 +2,13 @@
 
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
-from data.transforms import RandomResizedBBoxSafeCrop, Normalize, Compose
+from data.transforms import (
+    RandomResizedBBoxSafeCrop,
+    Normalize,
+    Compose,
+    Resize,
+    ToTensor,
+)
 
 from functools import partial
 from typing import Dict
@@ -180,10 +186,14 @@ def main(args):
             batch_size=args.batch_size,
         )
 
+        tse_val_transform = Compose(
+            (ToTensor(), Resize((160, 384, 384)), Normalize(mean=(0.359), std=(0.278,)))
+        )
+
         dataset_val_tse = MOAKSDataset(
             dataloader_val.dataset.root,
             "/scratch/htc/ashestak/meniscaltears/data/tse/val.json",
-            transform=dataloader_val.dataset.transform,
+            transform=tse_val_transform,
         )
         dataloader_val_tse = DataLoader(
             dataset_val_tse, num_workers=args.num_workers, batch_size=args.batch_size
@@ -192,7 +202,7 @@ def main(args):
         dataset_test_tse = MOAKSDataset(
             dataloader_val.dataset.root,
             "/scratch/htc/ashestak/meniscaltears/data/tse/test.json",
-            transform=dataloader_val.dataset.transform,
+            transform=tse_val_transform,
         )
 
         dataloader_test_tse = DataLoader(
