@@ -143,10 +143,11 @@ def to_gif(img, heatmap, out_path, cam_type="grad"):
 
     if cam_type=="grad":
         heatmap = (heatmap - heatmap.min())/(heatmap.max()-heatmap.min())
+        percentile = np.percentile(heatmap, 99)
         alpha = np.ones(heatmap.shape)
-        alpha[heatmap<0.1] = 0
-        alpha[heatmap>=0.1] = .5
-        heatmap[heatmap<0.1] = 0.1
+        alpha[heatmap<percentile] = 0
+        alpha[heatmap>=percentile] = .5
+        heatmap[heatmap<percentile] = percentile
         cmap = "jet"
     elif cam_type=="saliency":
         alpha = [.5] * img.shape[2]
@@ -154,7 +155,7 @@ def to_gif(img, heatmap, out_path, cam_type="grad"):
     elif cam_type == "back":
         heatmap = (heatmap - heatmap.mean())/(heatmap.std())
         alpha = np.ones(heatmap.shape)
-        percentile = np.percentile(heatmap, 99)
+        percentile = np.percentile(heatmap, 99.5)
         alpha[heatmap<percentile] = 0
         alpha[heatmap>=percentile] = .5
         heatmap[heatmap<percentile] = percentile
