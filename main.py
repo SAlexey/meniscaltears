@@ -2,7 +2,7 @@
 
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
-from data.transforms import RandomResizedBBoxSafeCrop
+from data.transforms import RandomResizedBBoxSafeCrop, Normalize, Compose
 
 from functools import partial
 from typing import Dict
@@ -148,7 +148,9 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
     if "scheduler" in state_dict and scheduler is not None:
         scheduler.load_state_dict(state_dict["scheduler"])
 
-    best_val_loss = state_dict.get("best_val_loss", kwargs.get("best_val_loss", -np.inf))
+    best_val_loss = state_dict.get(
+        "best_val_loss", kwargs.get("best_val_loss", -np.inf)
+    )
     start = state_dict.get("epoch", kwargs.get("epoch", 0))
 
     if start > 0:
@@ -162,6 +164,42 @@ def main(args):
     _set_random_seed(50899)
     dataloader_train, dataloader_val, dataloader_test = build(args)
 
+    if args.mix:
+
+        dataset_train_mix = MixDataset(
+            dataloader_train.dataset.root,
+            "/scratch/htc/ashestak/meniscaltears/data/train.json",
+            "/scratch/htc/ashestak/meniscaltears/data/tse/train.json",
+            train=True,
+            transforms=Compose((RandomResizedBBoxSafeCrop(), Normalize())),
+        )
+        dataloader_train_mix = DataLoader(
+            dataset_train_mix,
+            shuffle=True,
+            num_workers=args.num_workers,
+            batch_size=args.batch_size,
+        )
+
+        dataset_val_tse = MOAKSDataset(
+            dataloader_val.dataset.root,
+            "/scratch/htc/ashestak/meniscaltears/data/tse/val.json",
+            transform=dataloader_val.dataset.transform,
+        )
+        dataloader_val_tse = DataLoader(
+            dataset_val_tse, num_workers=args.num_workers, batch_size=args.batch_size
+        )
+
+        dataset_test_tse = MOAKSDataset(
+            dataloader_val.dataset.root,
+            "/scratch/htc/ashestak/meniscaltears/data/tse/test.json",
+            transform=dataloader_val.dataset.transform,
+        )
+
+        dataloader_test_tse = MOAKSDataset(
+            dataset_test_tse, num_workers=args.num_workers, batch_size=args.batch_size
+        )
+
+        dataloader_train = dataloader_train_mix
     device = torch.device(args.device)
 
     logging.info(f"Running On Device: {device}")
@@ -237,8 +275,7 @@ def main(args):
                 postprocess=postprocess,
             )
             saliency = MenisciSaliency(
-                model, use_cuda=args.device == "cuda", 
-                postprocess=postprocess
+                model, use_cuda=args.device == "cuda", postprocess=postprocess
             )
             g_back = GuidedBackprop(
                 model,
@@ -258,11 +295,7 @@ def main(args):
                                 ann["labels"][meniscus].detach().cpu().numpy().flatten()
                             )
                             for idx in np.argwhere(men_labels > 0):
-                                cam_img = (
-                                    cam(img, meniscus, idx)
-                                    .squeeze()
-                                    .numpy()
-                                )
+                                cam_img = cam(img, meniscus, idx).squeeze().numpy()
                                 sal_img = (
                                     saliency(img, meniscus, idx)
                                     .detach()
@@ -284,7 +317,7 @@ def main(args):
                                     img,
                                     cam_img,
                                     f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_gradcam.gif",
-                                    cam_type="grad"
+                                    cam_type="grad",
                                 )
                                 to_gif(
                                     img,
@@ -296,7 +329,7 @@ def main(args):
                                     img,
                                     back_img,
                                     f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_guided.gif",
-                                    cam_type="back"
+                                    cam_type="back",
                                 )
 
         torch.save(test_results, "test_results.pt")
@@ -360,7 +393,7 @@ def main(args):
 
                 for name, value in eval_results[metric].items():
 
-                    logs.append(f"{name} [{value}]")
+                    logs.append(f"{name:17} [{value:.4f}]")
 
                 logging.info(" | ".join(logs))
 
@@ -369,13 +402,15 @@ def main(args):
             for name, value in eval_results["confusion_matrix"].items():
                 tn, fp, fn, tp = value.flatten()
                 logging.info(
-                    f"confusion matrix for {name} TP [{tp}] | TN [{tn}] | FP [{fp}] | FN [{fn}]"
+                    f"confusion matrix for {name:17} TP [{tp:3d}] | TN [{tn:3d}] | FP [{fp:3d}] | FN [{fn:3d}]"
                 )
-        #weighting = pos_weight.detach().cpu().numpy().flatten()
-        #weighting /= weighting.sum()
-        #print(weighting)
+        # weighting = pos_weight.detach().cpu().numpy().flatten()
+        # weighting /= weighting.sum()
+        # print(weighting)
 
-        epoch_eval = np.fromiter(eval_results["roc_auc_score"].values(), dtype=float).mean() #* weighting
+        epoch_eval = np.fromiter(
+            eval_results["roc_auc_score"].values(), dtype=float
+        ).mean()  # * weighting
         if epoch_eval > best_val_loss:
             best_val_loss = epoch_eval
 
@@ -398,6 +433,37 @@ def main(args):
                 },
                 "checkpoint.ckpt",
             )
+
+        if args.mix:
+
+            # evaluate again on tse dataset only
+
+            eval_results = evaluate(
+                model,
+                dataloader_val_tse,
+                criterion=criterion,
+                criterion_kwargs={"pos_weight": dataset_val_tse.pos_weight},
+                postprocess=postprocess,
+                **metrics,
+            )
+
+            if "roc_auc_score" in eval_results:
+                logs = ["TSE roc_auc_score"]
+
+                for name, value in eval_results["roc_auc_score"].items():
+
+                    logs.append(f"{name:17} [{value:.4f}]")
+
+                logging.info(" | ".join(logs))
+
+            if "confusion_matrix" in eval_results:
+
+                for name, value in eval_results["confusion_matrix"].items():
+                    tn, fp, fn, tp = value.flatten()
+                    logging.info(
+                        f"TSE confusion matrix for {name:17} TP [{tp:3d}] | TN [{tn:3d}] | FP [{fp:3d}] | FN [{fn:3d}]"
+                    )
+
     return best_val_loss
 
 
