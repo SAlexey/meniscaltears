@@ -162,29 +162,33 @@ def main(args):
     _set_random_seed(50899)
     dataloader_train, dataloader_val, dataloader_test = build(args)
     
-    dataset_train_mix = MixDataset(
-            dataloader_train.dataset.root, 
-            "/scratch/htc/ashestak/meniscaltears/data/train.json",
-            "/scratch/htc/ashestak/meniscaltears/data/tse/train.json",
-            train=True, transforms=Compose((RandomResizedBBoxSafeCrop(), Normalize()))
-            )
+    if args.mix:
 
-    dataloader_train_mix = DataLoader(dataset_train_mix, shuffle=True, num_workers=args.num_workers, batch_size=args.batch_size)
+        dataset_train_mix = MixDataset(
+                dataloader_train.dataset.root, 
+                "/scratch/htc/ashestak/meniscaltears/data/train.json",
+                "/scratch/htc/ashestak/meniscaltears/data/tse/train.json",
+                train=True, transforms=Compose((RandomResizedBBoxSafeCrop(), Normalize()))
+                )
 
-    #dataset_val_tse = MOAKSDataset(
-    #        dataloader_val.dataset.root, 
-    #        "/scratch/htc/ashestak/meniscaltears/data/tse/val.json",
-    #        transform=dataloader_val.dataset.transform
-    #        )
-    #
-    #dataloader_val_tse = DataLoader(dataset_val_tse, num_workers=args.num_workers, batch_size=args.batch_size)
-    #dataset_test_tse = MOAKSDataset(
-    #        dataloader_val.dataset.root, 
-    #        "/scratch/htc/ashestak/meniscaltears/data/tse/test.json",
-    #        transform=dataloader_val.dataset.transform
-    #        )
-    
-    # dataloader_train_mix = DataLoader(dataset_test_tse, num_workers=args.num_workers, batch_size=args.batch_size)
+        dataloader_train_mix = DataLoader(dataset_train_mix, shuffle=True, num_workers=args.num_workers, batch_size=args.batch_size)
+
+        #dataset_val_tse = MOAKSDataset(
+        #        dataloader_val.dataset.root, 
+        #        "/scratch/htc/ashestak/meniscaltears/data/tse/val.json",
+        #        transform=dataloader_val.dataset.transform
+        #        )
+        #
+        #dataloader_val_tse = DataLoader(dataset_val_tse, num_workers=args.num_workers, batch_size=args.batch_size)
+        #dataset_test_tse = MOAKSDataset(
+        #        dataloader_val.dataset.root, 
+        #        "/scratch/htc/ashestak/meniscaltears/data/tse/test.json",
+        #        transform=dataloader_val.dataset.transform
+        #        )
+        
+        # dataloader_train_mix = DataLoader(dataset_test_tse, num_workers=args.num_workers, batch_size=args.batch_size)
+
+        dataloader_train = dataloader_train_mix
     device = torch.device(args.device)
 
     logging.info(f"Running On Device: {device}")
@@ -337,7 +341,7 @@ def main(args):
 
         train_results = train(
             model,
-            dataloader_train_mix,
+            dataloader_train,
             optimizer,
             criterion,
             criterion_kwargs={"pos_weight": pos_weight},

@@ -28,6 +28,7 @@ weights:
 data_dir: oai/v00/data/inputs
 anns_dir: meniscaltears/data
 tse: false
+mix: false 
 binary: true
 multilabel: true
 limit_train_items: false # will take up to limit_train_items training examples
