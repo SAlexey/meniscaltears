@@ -369,6 +369,7 @@ class MixDataset(Dataset):
                 (
                     ToTensor(),
                     RandomInvert(0.15),
+                    Resize((160, 384, 384)),
                     Normalize(mean=(0.4945), std=(0.3782,)),
                 )
             ),
@@ -379,7 +380,12 @@ class MixDataset(Dataset):
             binary=True,
             multilabel=True,
             transforms=Compose(
-                (ToTensor(), RandomInvert(0.15), Normalize(mean=(0.359,), std=(0.278,)))
+                (
+                    ToTensor(),
+                    RandomInvert(0.15),
+                    Resize((160, 384, 384)),
+                    Normalize(mean=(0.359,), std=(0.278,)),
+                )
             ),
         )
 
@@ -387,20 +393,25 @@ class MixDataset(Dataset):
         if self.train:
             self.pos_weight = (self.dess.pos_weight + self.tse.pos_weight) / 2
 
-
     def __len__(self):
         return len(self.dess) + len(self.tse) - 1
 
     def __getitem__(self, idx):
 
-        if idx < len(self.dess):
+        dess = idx < len(self.dess)
+
+        if dess:
             img, tgt = self.dess[idx]
         else:
             img, tgt = self.tse[idx - len(self.dess)]
 
         if self.train and random() <= self.p:
 
-            other, target = self[randint(0, len(self))]
+            if dess:
+                other, target = self.tse[randint(0, len(self.tse) - 1)]
+
+            else:
+                other, target = self.dess[randint(0, len(self.dess) - 1)]
 
             alpha = random()
             beta = 1 - alpha
