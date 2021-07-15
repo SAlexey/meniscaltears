@@ -20,7 +20,7 @@ import os
 
 
 def conv3x3x3(
-    in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, dilation: int = 1
+    in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, dilation: int = 1, padding = None
 ) -> nn.Conv3d:
     """3x3x3 convolution with padding"""
     return nn.Conv3d(
@@ -28,7 +28,7 @@ def conv3x3x3(
         out_planes,
         kernel_size=3,
         stride=stride,
-        padding=dilation,
+        padding=dilation if not padding else padding,
         groups=groups,
         bias=False,
         dilation=dilation,
@@ -129,9 +129,7 @@ class Bottleneck3D(nn.Module):
         return out
 
 
-
-
-class DilationBottleneck3D(nn.Module):
+class DilationBasic3D(nn.Module):
     expansion = 1
     
     def __init__(
@@ -144,7 +142,7 @@ class DilationBottleneck3D(nn.Module):
         norm_layer: Optional[Callable[..., nn.Module]] = None,
         residual=True
     ) -> None:
-        super(Bottleneck3D, self).__init__()
+        super(DilationBasic3D, self).__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm3d
         # Both self.conv2 and self.downsample layers downsample the input when stride != 1
@@ -329,7 +327,7 @@ class ResNet3D(nn.Module):
         return self._forward_impl(x)
 
 
-def dilated_resnet26_3d(*, block=DilationBottleneck3D, norm_layer=nn.BatchNorm3d, **kwargs) -> ResNet:
+def dilated_resnet26_3d(*, block=DilationBasic3D, norm_layer=nn.BatchNorm3d, **kwargs) -> ResNet:
     return DilationResNet3D(block, [1, 1, 2, 2, 2, 2, 1, 1], norm_layer=norm_layer, **kwargs)
 
 
