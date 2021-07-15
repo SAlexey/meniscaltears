@@ -1,0 +1,16 @@
+id,side,V00MMTMA,V00MMTMB,V00MMTMP,V00MMTLA,V00MMTLB,V00MMTLP,SHOW
+9001695,right,0,6,6,6,3,1,MM-pH
+9001897,right,0,3,5,0,0,0,MM-pH
+9204076,right,3,3,3,1,3,1,MM-ah and MM-ph
+9454239,right,0,0,0,1,2,3,LM-PH
+9454360,right,0,1,3,0,1,1,MM-ph
+9478504,right,3,6,6,0,0,0,MM-ah  
+9663706,left,3,3,3,0,0,0,MM-everything
+9006723,left,0,0,0,3,3,3,LM-AH; maybe also PH
+9008934,right,0,6,3,0,3,1,LM-B
+9078486,left,0,0,0,0,6,4,LM-ph
+9082159,right,0,6,3,1,1,3,LM-ph
+9124024,right,0,0,1,3,3,1,LM-ah  
+9128270,right,0,0,0,3,3,6,LM-ah  
+9223789,left,0,1,3,3,3,3,LM-everything
+9176992,right,0,6,3,0,0,0,MM-ah 
