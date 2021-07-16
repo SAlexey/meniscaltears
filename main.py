@@ -98,6 +98,9 @@ class MixCriterion(nn.Module):
         return losses
 
 
+# WARNING: NO SIGMOID IN POSTPROCESS FOR LABELS
+# THEY WILL BE ACTIVATED IN EVALIATION [enpgine.py]
+# AFTER BCEWithLogitsLoss HAS DONE ITS THING
 class Postprocess(nn.Module):
     def forward(self, output: Dict[str, torch.Tensor]):
         if "labels" in output:
@@ -269,6 +272,9 @@ def main(args):
     metrics = {key: METRICS[key] for key in args.metrics}
 
     postprocess = Postprocess()
+    # WARNING: NO SIGMOID IN POSTPROCESS FOR LABELS
+    # THEY WILL BE ACTIVATED IN EVALIATION [enpgine.py]
+    # AFTER BCEWithLogitsLoss HAS DONE ITS THING
 
     if args.eval:
 

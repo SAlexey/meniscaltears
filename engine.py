@@ -87,7 +87,12 @@ def evaluate(
     outputs = _reduce(outputs)
     targets = _reduce(targets)
 
+    # WARNING: NO SIGMOID IN POSTPROCESS FOR LABELS
+    # THEY WILL BE ACTIVATED HERE
+    # AFTER BCEWithLogitsLoss HAS DONE ITS THING
     outputs["labels"] = outputs["labels"].sigmoid()
+
+    print(outputs["labels"])
 
     eval_results["outputs"] = outputs
     eval_results["targets"] = targets
