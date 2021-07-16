@@ -75,14 +75,19 @@ def evaluate(
 
                 if loss_dict:
                     losses.append({k: v.detach().cpu() for k, v in loss_dict.items()})
+
     med_lat_pred = torch.cat(med_lat_pred, dim=0).cpu()
     med_lat_target = torch.cat(med_lat_target, dim=0).cpu()
-    eval_results["lat_auc"] = roc_auc_score(med_lat_target[:,0], med_lat_pred[:,0])
-    eval_results["med_auc"] = roc_auc_score(med_lat_target[:,1], med_lat_pred[:,1])
-    eval_results["anywhere_auc"] = roc_auc_score(torch.max(med_lat_target, dim=-1)[0], torch.max(med_lat_pred, dim=-1)[0])
+    eval_results["lat_auc"] = roc_auc_score(med_lat_target[:, 0], med_lat_pred[:, 0])
+    eval_results["med_auc"] = roc_auc_score(med_lat_target[:, 1], med_lat_pred[:, 1])
+    eval_results["anywhere_auc"] = roc_auc_score(
+        torch.max(med_lat_target, dim=-1)[0], torch.max(med_lat_pred, dim=-1)[0]
+    )
 
     outputs = _reduce(outputs)
     targets = _reduce(targets)
+
+    outputs["labels"] = outputs["labels"].sigmoid()
 
     eval_results["outputs"] = outputs
     eval_results["targets"] = targets

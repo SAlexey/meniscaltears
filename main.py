@@ -36,6 +36,7 @@ from einops import rearrange
 import sys
 from data.oai import build, CropDataset, MOAKSDataset, MixDataset
 from util.cam import MenisciCAM, to_gif, MenisciSaliency, GuidedBackprop
+from util.xai import SmoothGradientSaliency
 from models.resnet import DilationResNet3D
 
 
@@ -155,15 +156,18 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
     if "scheduler" in state_dict and scheduler is not None:
         scheduler.load_state_dict(state_dict["scheduler"])
 
-    best_val_loss = state_dict.get(
-        "best_val_loss", kwargs.get("best_val_loss", -np.inf)
-    )
+    best_val_loss = state_dict.get("best_val_loss", kwargs.get("best_val_loss", np.inf))
+    best_roc_auc = state_dict.get("best_roc_auc", kwargs.get("best_roc_auc", -np.inf))
     start = state_dict.get("epoch", kwargs.get("epoch", 0))
 
     if start > 0:
         start += 1
 
-    return {"start": start, "best_val_loss": best_val_loss}
+    return {
+        "start": start,
+        "best_val_loss": best_val_loss,
+        "best_roc_auc": best_roc_auc,
+    }
 
 
 @hydra.main(config_path=".config/", config_name="config")
@@ -245,6 +249,7 @@ def main(args):
     state = _load_state(args, model, optimizer, scheduler)
     start = state["start"]
     best_val_loss = state["best_val_loss"]
+    best_roc_auc = -np.inf
 
     names = ("LAH", "LB", "LPH", "MAH", "MB", "MPH")
 
@@ -279,14 +284,18 @@ def main(args):
         )
         logging.info(f"Test AUC: {test_results['roc_auc_score']}")
 
-        logging.info(f"Test AUC | anywhere: {test_results['anywhere_auc']} | medial: {test_results['med_auc']} | lateral: {test_results['lat_auc']}")
+        logging.info(
+            f"Test AUC | anywhere: {test_results['anywhere_auc']} | medial: {test_results['med_auc']} | lateral: {test_results['lat_auc']}"
+        )
 
         if args.cam:
             logging.info(f"Obtaining GradCAM")
 
             cam = MenisciCAM(
                 model,
-                model.backbone.layer7 if isinstance(model.backbone, DilationResNet3D) else model.backbone.layer4,
+                model.backbone.layer7
+                if isinstance(model.backbone, DilationResNet3D)
+                else model.backbone.layer4,
                 use_cuda=args.device == "cuda",
                 postprocess=postprocess,
             )
@@ -298,6 +307,8 @@ def main(args):
                 use_cuda=args.device == "cuda",
                 postprocess=postprocess,
             )
+
+            smooth_grad = SmoothGradientSaliency(model, postprocess=postprocess)
 
             for bs_img, bs_ann in dataloader_visual:
                 for i in range(len(bs_img)):
@@ -311,42 +322,15 @@ def main(args):
                                 ann["labels"][meniscus].detach().cpu().numpy().flatten()
                             )
                             for idx in np.argwhere(men_labels > 0):
+                                # fmt: off
                                 cam_img = cam(img, meniscus, idx).squeeze().numpy()
-                                sal_img = (
-                                    saliency(img, meniscus, idx)
-                                    .detach()
-                                    .cpu()
-                                    .squeeze()
-                                    .numpy()
-                                )
-                                back_img = (
-                                    g_back.forward(img, meniscus, idx)
-                                    .detach()
-                                    .cpu()
-                                    .squeeze()
-                                    .numpy()
-                                )
-                                np.save(
-                                    f"{ann['image_id'].item()}_{meniscus}_cam", cam_img
-                                )
-                                to_gif(
-                                    img,
-                                    cam_img,
-                                    f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_gradcam.gif",
-                                    cam_type="grad",
-                                )
-                                to_gif(
-                                    img,
-                                    sal_img,
-                                    f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_saliency.gif",
-                                    cam_type="back",
-                                )
-                                to_gif(
-                                    img,
-                                    back_img,
-                                    f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_guided.gif",
-                                    cam_type="back",
-                                )
+                                sal_img = (saliency(img, meniscus, idx).detach().cpu().squeeze().numpy())
+                                back_img = (g_back.forward(img, meniscus, idx).detach().cpu().squeeze().numpy())
+                                smooth_grad_img = smooth_grad(img, meniscus, 1.0)
+                                to_gif(img, smooth_grad_img.squeeze().numpy(), f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_gsmoothgrad.gif", cam_type="back")
+                                to_gif(img,sal_img,f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_saliency.gif",cam_type="back",)
+                                to_gif(img,back_img,f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_guided.gif",cam_type="back",)
+                                # fmt: on
 
         torch.save(test_results, "test_results.pt")
         logging.info("Testing finished, exitting")
@@ -424,17 +408,43 @@ def main(args):
         # weighting /= weighting.sum()
         # print(weighting)
 
-        epoch_eval = np.fromiter(
-            eval_results["roc_auc_score"].values(), dtype=float
-        ).mean()  # * weighting
-        if epoch_eval > best_val_loss:
-            best_val_loss = epoch_eval
+        avg_auc = np.mean(
+            list(eval_results.get("roc_auc_score", dict(default=-np.inf)).values())
+        )
 
-            torch.save(model.state_dict(), "best_model.pt")
-            torch.save(eval_results, "best_model_eval_results.ps")
+        if avg_auc > best_roc_auc:
+            best_roc_auc = avg_auc
 
-            with open("best_model.json", "w") as fh:
-                json.dump({"epoch": epoch, "val_loss": best_val_loss}, fh)
+            torch.save(model.state_dict(), "best_roc_model.pt")
+            torch.save(eval_results, "best_roc_model_eval.pt")
+
+            with open("best_roc_model.json", "w") as fh:
+                json.dump(
+                    {
+                        "backbone": args.model.backbone,
+                        "epoch": epoch,
+                        "val_loss": best_val_loss,
+                        "roc_auc": best_roc_auc,
+                    },
+                    fh,
+                )
+
+        if epoch_loss > best_val_loss:
+            best_val_loss = epoch_loss
+
+            torch.save(model.state_dict(), "best_bce_model.pt")
+            torch.save(eval_results, "best_bce_model_eval.ps")
+
+            with open("best_bce_model.json", "w") as fh:
+                json.dump(
+                    {
+                        "backbone": args.model.backbone,
+                        "epoch": epoch,
+                        "val_loss": best_val_loss,
+                        "roc_auc": avg_auc,
+                    },
+                    fh,
+                )
 
         scheduler.step()
 
@@ -446,6 +456,7 @@ def main(args):
                     "optimizer": optimizer.state_dict(),
                     "scheduler": scheduler.state_dict(),
                     "best_val_loss": best_val_loss,
+                    "best_roc_auc": best_roc_auc,
                 },
                 "checkpoint.ckpt",
             )
@@ -489,4 +500,4 @@ def main(args):
 if __name__ == "__main__":
     main()
 
-# %%ple indices must be integers or slices, not str
+# %%
