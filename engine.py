@@ -92,8 +92,6 @@ def evaluate(
     # AFTER BCEWithLogitsLoss HAS DONE ITS THING
     outputs["labels"] = outputs["labels"].sigmoid()
 
-    print(outputs["labels"])
-
     eval_results["outputs"] = outputs
     eval_results["targets"] = targets
     eval_results["total_loss"] = total_loss
