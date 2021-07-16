@@ -459,7 +459,7 @@ def build(args):
     to_tensor = ToTensor()
 
     if args.tse:
-        normalize = Normalize(mean=(0.35910480707595), std=(0.27756012297851207,))
+        normalize = Normalize(mean=(0.21611085650953954,), std=(0.18657889602497782,))
     else:
         normalize = Normalize(mean=(0.4945), std=(0.3782,))
 
@@ -506,7 +506,7 @@ def build(args):
 
     else:
         train_transforms = Compose(
-            (to_tensor, RandomResizedBBoxSafeCrop(p=0.5), normalize)
+            (to_tensor, RandomResizedBBoxSafeCrop(p=0.5),  Resize((44, 448, 448)), normalize)
         )
         dataset_train = MOAKSDataset(
             data_dir,
@@ -519,7 +519,7 @@ def build(args):
         if args.limit_train_items:
             dataset_train.anns = dataset_train.anns[: args.limit_train_items]
 
-        val_transforms = Compose([to_tensor, normalize])
+        val_transforms = Compose([to_tensor, Resize((44, 448, 448)), normalize])
         dataset_val = MOAKSDataset(
             data_dir,
             anns_dir / "val.json",
