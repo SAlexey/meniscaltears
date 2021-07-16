@@ -435,7 +435,7 @@ def main(args):
                     fh,
                 )
 
-        if epoch_loss > best_val_loss:
+        if epoch_loss < best_val_loss:
             best_val_loss = epoch_loss
 
             torch.save(model.state_dict(), "best_bce_model.pt")
