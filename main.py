@@ -177,6 +177,7 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
 def main(args):
     _set_random_seed(50899)
     dataloader_train, dataloader_val, dataloader_test, dataloader_visual = build(args)
+    logging.info(f"Img size: {dataloader_train.dataset.__getitem__(0)[0].shape}")
 
     if dataloader_visual is None:
         dataloader_visual = dataloader_test
@@ -431,11 +432,16 @@ def main(args):
                         "epoch": epoch,
                         "val_loss": best_val_loss,
                         "roc_auc": best_roc_auc,
+                        "batch": args.batch_size,
+                        "dropout_resnet": args.model.dropout,
+                        "dropout_cls": args.model.cls_dropout,
+                        "lr_head": args.lr_head,
+                        "lr_backbone": args.lr_backbone
                     },
                     fh,
                 )
 
-        if epoch_loss > best_val_loss:
+        if epoch_loss < best_val_loss:
             best_val_loss = epoch_loss
 
             torch.save(model.state_dict(), "best_bce_model.pt")
@@ -448,6 +454,7 @@ def main(args):
                         "epoch": epoch,
                         "val_loss": best_val_loss,
                         "roc_auc": avg_auc,
+                        "batch": args.batch_size
                     },
                     fh,
                 )
