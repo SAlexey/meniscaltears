@@ -459,7 +459,7 @@ def build(args):
     to_tensor = ToTensor()
 
     if args.tse:
-        normalize = Normalize(mean=(0.21611085650953954,), std=(0.18657889602497782,))
+        normalize = Normalize(mean=(0.21637,), std=(0.18688,))
     else:
         normalize = Normalize(mean=(0.4945), std=(0.3782,))
 
