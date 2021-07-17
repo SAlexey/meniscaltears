@@ -423,6 +423,13 @@ class DilationResNet3D(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
+        # Zero-initialize the last BN in each residual branch,
+        # so that the residual branch starts with zeros, and each residual block behaves like an identity.
+        # This improves the model by 0.2~0.3% according to https://arxiv.org/abs/1706.02677
+        
+        for m in self.modules():
+            if isinstance(m, DilationBasic3D):
+                nn.init.constant_(m.bn2.weight, 0)  # type: ignore[arg-type]
 
     def _make_layer(
         self, 
