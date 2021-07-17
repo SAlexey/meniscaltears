@@ -114,7 +114,7 @@ def to_gif(img, heatmap, out_path, cam_type="grad"):
  
     if cam_type=="grad":
         heatmap = (heatmap - heatmap.min())/(heatmap.max()-heatmap.min())
-        percentile = np.percentile(heatmap, 99)
+        percentile = np.percentile(heatmap, 95)
         alpha = np.ones(heatmap.shape)
         alpha[heatmap<percentile] = 0
         alpha[heatmap>=percentile] = .5
