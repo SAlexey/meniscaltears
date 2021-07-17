@@ -52,7 +52,7 @@ class SmoothGradientSaliency(nn.Module):
             assert "boxes" in output
             boxes = output["boxes"].squeeze()[target_obj]
         else:
-            boxes = torch.tensor([0.0])
+            boxes = torch.tensor([0.0]).to(self.device)
 
         labels = output["labels"].squeeze()[target_obj][target_cls]
         #labels = labels.where(labels == target_cls, torch.tensor([0.0]))
