@@ -54,10 +54,11 @@ class SmoothGradientSaliency(nn.Module):
         else:
             boxes = torch.tensor([0.0])
 
-        labels = output["labels"].squeeze()[target_obj].sigmoid()
-        labels = labels.where(labels == target_cls, torch.tensor([0.0]))
+        labels = output["labels"].squeeze()[target_obj][target_cls]
+        #labels = labels.where(labels == target_cls, torch.tensor([0.0]))
 
-        out = labels.sum() + boxes.sum()
+        out = labels #+ boxes.sum)
+        out.backward()
 
         out = saliency(input.grad.data)
 

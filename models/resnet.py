@@ -736,6 +736,7 @@ class ClsNet3D(nn.Module):
 
         backbone, num_channels = CONFIG[backbone]
         backbone = backbone(*args, **kwargs)
+        self.intermediate_layer = intermediate_layer
         self.backbone = IntermediateLayerGetter(backbone, {intermediate_layer: "features"})
         self.pool = nn.AdaptiveAvgPool3d(1)
         self.dropout = nn.Dropout(p=dropout)

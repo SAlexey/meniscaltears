@@ -265,6 +265,7 @@ def main(args):
         "confusion_matrix": partial(confusion_matrix, names=names),
     }
     logging.info(f"Running: {model}")
+    logging.info(f"Dilation Resnet26: {model.intermediate_layer=='layer7'}")
     logging.info(f"Running model on {'TSE' if args.tse else 'DESS'} sequence")
     logging.info(
         f'Running model on dataset {"with" if isinstance(dataloader_train.dataset, CropDataset) else "without"} cropping\n'
@@ -297,11 +298,10 @@ def main(args):
 
         if args.cam:
             logging.info(f"Obtaining GradCAM")
-
             cam = MenisciCAM(
                 model,
                 model.backbone.layer7
-                if isinstance(model.backbone, DilationResNet3D)
+                if model.intermediate_layer=="layer7"
                 else model.backbone.layer4,
                 use_cuda=args.device == "cuda",
                 postprocess=postprocess,
@@ -333,10 +333,12 @@ def main(args):
                                 cam_img = cam(img, meniscus, idx).squeeze().numpy()
                                 sal_img = (saliency(img, meniscus, idx).detach().cpu().squeeze().numpy())
                                 back_img = (g_back.forward(img, meniscus, idx).detach().cpu().squeeze().numpy())
-                                smooth_grad_img = smooth_grad(img, meniscus, 1.0)
+                                smooth_grad_img = smooth_grad(img, meniscus, idx)
                                 to_gif(img, smooth_grad_img.squeeze().numpy(), f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_gsmoothgrad.gif", cam_type="back")
                                 to_gif(img,sal_img,f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_saliency.gif",cam_type="back",)
                                 to_gif(img,back_img,f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_guided.gif",cam_type="back",)
+                                #cam_img = cam_img * back_img * img.detach().cpu().squeeze().numpy()
+                                to_gif(img, cam_img,f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_grad_cam.gif", cam_type="grad")
                                 # fmt: on
 
         torch.save(test_results, "test_results.pt")
