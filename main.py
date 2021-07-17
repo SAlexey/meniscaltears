@@ -337,7 +337,7 @@ def main(args):
                                 to_gif(img, smooth_grad_img.squeeze().numpy(), f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_gsmoothgrad.gif", cam_type="back")
                                 to_gif(img,sal_img,f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_saliency.gif",cam_type="back",)
                                 to_gif(img,back_img,f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_guided.gif",cam_type="back",)
-                                #cam_img = cam_img * back_img * img.detach().cpu().squeeze().numpy()
+                                #cam_img = cam_img * back_img 
                                 to_gif(img, cam_img,f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_grad_cam.gif", cam_type="grad")
                                 # fmt: on
 
