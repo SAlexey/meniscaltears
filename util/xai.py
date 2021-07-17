@@ -14,6 +14,7 @@ class SmoothGradientSaliency(nn.Module):
         # smooth grad sigma range for gaussian noize
         noise_scale=(0.1, 0.205),
         progress=True,
+        boxes=False,
     ):
         super().__init__()
 
@@ -22,6 +23,7 @@ class SmoothGradientSaliency(nn.Module):
         self.sg_scale = Uniform(*noise_scale)
         self.device = _get_model_device(model)
         self.progress = progress
+        self.boxes = boxes
 
     def to(self, *args, **kwargs):
         self.model = self.model.to(*args, **kwargs)
@@ -34,7 +36,6 @@ class SmoothGradientSaliency(nn.Module):
         input: torch.Tensor,
         target_obj,
         target_cls,
-        boxes=True,
         saliency=torch.abs,
     ):
 
@@ -47,7 +48,7 @@ class SmoothGradientSaliency(nn.Module):
         if self.postprocess is not None:
             output = self.postprocess(output)
 
-        if boxes:
+        if self.boxes:
             assert "boxes" in output
             boxes = output["boxes"].squeeze()[target_obj]
         else:
