@@ -38,20 +38,21 @@ class ActivationsAndGradients:
         return self.model(x)
 
 
-class GradCAM(nn.Module):
+class MenisciCAM(nn.Module):
+    """
+    Class Activation Mapping (CAM) for menisci predictions
+    """
     def __init__(
         self,
         model,
         target_layer,
         use_cuda=False,
-        reshape_transform=None,
         postprocess=None,
     ):
         super().__init__()
         self.model = model.eval()
         self.target_layer = target_layer
         self.use_cuda = use_cuda
-        self.reshape_transform = reshape_transform
 
         # postprocess outputs in any way (eg reshape)
         self.postprocess = postprocess
@@ -61,34 +62,38 @@ class GradCAM(nn.Module):
 
         self.activations_and_gradients = ActivationsAndGradients(model, target_layer)
 
-    def get_cam_weights(self, input, target_category, activations, gradients):
+    def get_cam_weights(self, input, meniscus, activations, gradients):
         return gradients.mean(dim=(2, 3, 4))
 
-    def get_loss(self, output, target_category):
-        loss = output[tuple(target_category)]
-        # for i in range(len(target_category)):
-        #     loss = loss + output[i, [0, 0]]
+    def get_loss(self, output, meniscus, region=None):
+        labels = output["labels"][:, meniscus]
+
+        if region:
+            loss_labels = labels[:,region]
+        else:
+            loss_labels = labels.sum(dim=1)
+
+        loss = loss_labels
+
         return loss
 
     def get_cam_image(self, input, target_category, activations, gradients):
-
         weights = self.get_cam_weights(input, target_category, activations, gradients)
         weighted_activations = weights[:, :, None, None, None] * activations
 
-        cam = weighted_activations.max(dim=1, keepdim=True).values
+        cam = F.relu(weighted_activations.mean(dim=1, keepdim=True))
         return cam
 
-    def forward(self, input_tensor, target_category, region=None, eigen_smooth=False):
-
+    def forward(self, input_tensor, target_category, region=None):
         if self.use_cuda:
             input_tensor = input_tensor.cuda()
-
+        
+        self.model.zero_grad()
         output = self.activations_and_gradients(input_tensor)
 
         if self.postprocess is not None:
             output = self.postprocess(output)
 
-        self.model.zero_grad()
         loss = self.get_loss(output, target_category, region)
         loss.backward(retain_graph=True)
 
@@ -102,45 +107,11 @@ class GradCAM(nn.Module):
         return result
 
 
-class MenisciCAM(GradCAM):
-
-    """
-    Class Activation Mapping (CAM) for menisci predictions
-    """
-
-    def get_cam_weights(self, input, meniscus, activations, gradients):
-        return gradients.mean(dim=(2, 3, 4))
-
-    def get_loss(self, output, meniscus, region=None):
-
-        labels = output["labels"][:, meniscus]
-        if "boxes" in output.keys():
-            boxes = output["boxes"][:, meniscus]
-            loss_boxes = boxes.sum(dim=1)
-
-        if region:
-            loss_labels = labels[:,region]
-        else:
-            loss_labels = labels.sum(dim=1)
-
-        loss = loss_labels  # + loss_boxes # <- depending on boxes ?
-
-        return loss
-
-    def get_cam_image(self, input, target_category, activations, gradients):
-
-        weights = self.get_cam_weights(input, target_category, activations, gradients)
-        weighted_activations = weights[:, :, None, None, None] * activations
-
-        cam = weighted_activations.max(dim=1, keepdim=True).values
-        return cam
-
-
 def to_gif(img, heatmap, out_path, cam_type="grad"):
     tmp_files = []
     desc = []
     assert cam_type in ["grad", "saliency", "back"]
-
+ 
     if cam_type=="grad":
         heatmap = (heatmap - heatmap.min())/(heatmap.max()-heatmap.min())
         percentile = np.percentile(heatmap, 99)
@@ -160,7 +131,6 @@ def to_gif(img, heatmap, out_path, cam_type="grad"):
         alpha[heatmap>=percentile] = .5
         heatmap[heatmap<percentile] = percentile
         cmap="hot"
-
 
     for n in range(img.shape[2]):
         fd, path = tempfile.mkstemp(suffix=".png")
@@ -284,7 +254,6 @@ class GuidedBackprop():
                 module.register_forward_hook(relu_forward_hook_function)
 
     def forward(self, input_image, target_label, region):
-        
         if self.use_cuda:
             input_image = input_image.cuda()
         # Zero gradients
