@@ -270,6 +270,7 @@ def main(args):
     logging.info(
         f'Running model on dataset {"with" if isinstance(dataloader_train.dataset, CropDataset) else "without"} cropping\n'
     )
+    logging.info(f"Random Data augmentation: {args.data_augmentation if hasattr(args, 'data_augmentation') else False}")
 
     metrics = {key: METRICS[key] for key in args.metrics}
 
