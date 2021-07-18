@@ -1,3 +1,6 @@
+name: 99percentile_data
+
+
 defaults:
   - model: resnet26
 
@@ -29,7 +32,7 @@ data_dir: oai/v00/data/inputs
 anns_dir: meniscaltears/data
 binary: true
 multilabel: true
-tse: true
+tse: false
 mix: false 
 
 limit_train_items: false # will take up to limit_train_items training examples
@@ -40,10 +43,10 @@ limit_test_items: false
 # TRAINING HPARAMS
 num_epochs: 500
 num_workers: 8
-batch_size: 112 
+batch_size: 8
 lr: 0.0001 # default learning rate
 lr_backbone: 0.0001
-lr_head: 0.0001
+lr_head: 0.00005
 lr_drop_step: 50
 lr_drop_rate: 0.5
 window: 20

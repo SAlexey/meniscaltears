@@ -73,7 +73,7 @@ data_dir: oai/v00/data/inputs
 anns_dir: meniscaltears/data
 binary: true
 multilabel: true
-tse: false
+tse: true
 mix: false
 
 limit_train_items: false # will take up to limit_train_items training examples

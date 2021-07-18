@@ -37,9 +37,10 @@ class CropDataset(Dataset):
         }
     """
 
-    def __init__(self, root, anns, transforms=None, size=None):
+    def __init__(self, root, anns, transforms=None, size=None, tse=False):
         self.root = root
         self.train = "train" in str(anns)
+        self.tse = tse
         with open(anns) as fh:
             anns = json.load(fh)
 
@@ -75,8 +76,11 @@ class CropDataset(Dataset):
             maxs.append(np.min(np.array(ann["boxes"]), axis=0)[3:])
         maxs = np.vstack(maxs)
         mins = np.vstack(mins)
-
-        max_roi = size_factor * np.max(maxs - mins, axis=0)
+        if self.tse:
+            percent = 99
+        else:
+            percent = 100
+        max_roi = size_factor * np.percentile(maxs - mins, percent, axis=0)
         self.img_size = tuple(map(dividable_eight, max_roi))
 
     def _targets(self):
@@ -470,6 +474,7 @@ def build(args):
             data_dir,
             anns_dir / "train.json",
             transforms=train_transforms,
+            tse = args.tse
         )
 
         if args.limit_train_items:
@@ -482,6 +487,7 @@ def build(args):
             anns_dir / "val.json",
             transforms=val_transforms,
             size=dataset_train.img_size,
+            tse=args.tse
         )
 
         if args.limit_val_items:
@@ -492,6 +498,7 @@ def build(args):
             anns_dir / "test.json",
             transforms=val_transforms,
             size=dataset_train.img_size,
+            tse=args.tse
         )
 
         if args.limit_test_items:
@@ -502,7 +509,9 @@ def build(args):
             anns_dir / "visual.json",
             transforms=val_transforms,
             size=dataset_train.img_size,
+            tse=args.tse
         )
+        
 
     else:
         train_transforms = Compose(
