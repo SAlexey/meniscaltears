@@ -1,3 +1,4 @@
+from data.transforms import AddGaussianNoise
 import numpy as np
 from util.box_ops import box_cxcywh_to_xyxy, denormalize_boxes
 import torch
@@ -10,23 +11,70 @@ import tempfile
 import imageio
 import matplotlib.pyplot as plt
 import os
+import torchvision.transforms as T
+from torchvision.transforms import functional as TF
+from random import random, randrange
+
+
+class AugSmoothTransform(T.Compose):
+    def __init__(self, p=0.5):
+        self.p = p
+        self.noise = torch.distributions.Normal(0.1, 0.5)
+        self.transforms = [
+            self.random_hflip,
+            self.random_noise,
+            self.random_rotate,
+            self.random_multiply,
+        ]
+
+    def random_hflip(self, img):
+        if random() < self.p:
+            return img.flip(-1)
+        return img
+
+    def random_noise(self, img):
+        if random() <= self.p:
+            return img + self.noise.sample(img.size()).to(img.device)
+        return img
+
+    def random_rotate(self, img):
+        if random() < self.p:
+            angle = np.random.uniform(-5, +5)
+            rotated_img = [TF.rotate(i, angle) for i in img.unbind(2)]
+            return torch.stack(rotated_img, dim=2)
+        return img
+
+    def random_multiply(self, img):
+        if random() <= self.p:
+            return img * np.random.uniform(0.9, 1.1)
+        return img
 
 
 class HeatmapGifOverlayMixin(object):
 
-    NAMES = [("L", "M"), ("AH", "B", "PH")]
+    NAMES = [("L", "M")]
 
-    def to_gif(self, img, heatmap, name):
+    def to_gif(self, img, heatmap, name, cam_type="grad"):
         tmp_files = []
         desc = []
         cmap = "hot"
-        alpha = [0.3] * img.shape[0]
+        alpha = np.ones(len(img))
 
+        heatmap = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min())
         heatmap = (heatmap - heatmap.mean()) / heatmap.std()
-        heatmap = heatmap / heatmap.max()
-        p = np.percentile(heatmap, q=99.5)
 
-        heatmap = np.where(heatmap > p, heatmap, 0.0)
+        if cam_type == "grad":
+            p = np.percentile(heatmap, 98)
+            alpha = np.ones(heatmap.shape)
+            alpha[heatmap < p] = 0
+            alpha[heatmap >= p] = 0.5
+            heatmap[heatmap < p] = p
+            cmap = "jet"
+        else:
+            p = np.percentile(heatmap, q=99.5)
+            alpha[heatmap < p] = 0
+            alpha[heatmap >= p] = 0.7
+            heatmap = np.where(heatmap > p, heatmap)
 
         for n in range(img.shape[0]):
             fd, path = tempfile.mkstemp(suffix=".png")
@@ -52,32 +100,69 @@ class HeatmapGifOverlayMixin(object):
         imageio.mimsave(name, images)
 
 
-class GradCAM(nn.Module):
+class ActivationsAndGradients:
+    """Class for extracting activations and
+    registering gradients from targetted intermediate layers"""
+
+    def __init__(self, model, target_layer):
+        self.model = model
+        self.gradients = []
+        self.activations = []
+
+        target_layer.register_forward_hook(self.save_activation)
+        target_layer.register_full_backward_hook(self.save_gradient)
+
+    def save_activation(self, module, input, output):
+        activation = output
+        self.activations.append(activation.cpu().detach())
+
+    def save_gradient(self, module, grad_input, grad_output):
+        # Gradients are computed in reverse order
+        grad = grad_output[0]
+        self.gradients = [grad.cpu().detach()] + self.gradients
+
+    def __call__(self, x):
+        self.gradients = []
+        self.activations = []
+        return self.model(x)
+
+
+class GradCAM(nn.Module, HeatmapGifOverlayMixin):
     def __init__(self, model, target_layer, use_cuda=False, postprocess=None):
         super().__init__()
         self.model = model.eval()
         self.layer = target_layer
         self.use_cuda = use_cuda
         self.postprocess = postprocess
-
         if self.use_cuda:
             model.cuda()
+
+        self.activations_and_gradients = ActivationsAndGradients(model, target_layer)
 
     def get_cam_weights(self, input, key, index, activations, gradients):
         return gradients.mean(dim=(2, 3, 4))
 
     def get_loss(self, output, key, index):
-        return output[key][index]
+        return output[key][index].sum()
 
     def get_cam_image(self, input, key, index, activations, gradients):
 
-        weights = self.get_cam_weights(input, activations, gradients)
+        weights = self.get_cam_weights(input, key, index, activations, gradients)
         weighted_activations = weights[:, :, None, None, None] * activations
 
         cam = weighted_activations.max(dim=1, keepdim=True).values
         return cam
 
-    def forward(self, input, key, index, aug_smooth=False):
+    def forward(
+        self,
+        input,
+        output_index,
+        output_key="labels",
+        aug_smooth=False,
+        num_passes=15,
+        save_as=False,
+        crop=False,
+    ):
 
         if self.use_cuda:
             input = input.cuda()
@@ -88,17 +173,52 @@ class GradCAM(nn.Module):
             output = self.postprocess(output)
 
         self.model.zero_grad()
-        loss = self.get_loss(output, key, index)
+        loss = self.get_loss(output, output_key, output_index)
         loss.backward(retain_graph=True)
 
         activations = self.activations_and_gradients.activations[-1].cpu().data
         grads = self.activations_and_gradients.gradients[-1].cpu().data
 
-        cam = self.get_cam_image(input, key, index, activations, grads)
+        cam = self.get_cam_image(input, output_key, output_index, activations, grads)
 
-        result = F.interpolate(cam, input.shape[-3:], mode="trilinear")
+        if aug_smooth:
+            # performs a few more iterations with augmentation of the input image
+            # averages cam results in the end
+            # should reduce noise
+            image_aug = AugSmoothTransform()
+            for _ in range(num_passes):  # 5 passes
+                aug_input = image_aug(input)
 
-        return result.detach().cpu().numpy()
+                output = self.activations_and_gradients(aug_input)
+
+                if self.postprocess is not None:
+                    output = self.postprocess(output)
+                self.model.zero_grad()
+
+                loss = self.get_loss(output, output_key, output_index)
+                loss.backward(retain_graph=True)
+
+                activations = self.activations_and_gradients.activations[-1].cpu().data
+                grads = self.activations_and_gradients.gradients[-1].cpu().data
+
+                cam += self.get_cam_image(
+                    aug_input, output_key, output_index, activations, grads
+                )
+
+            # take the average of cams
+            cam = cam / num_passes
+
+        result = F.interpolate(
+            cam, input.shape[-3:], mode="trilinear", align_corners=False
+        )
+        result = result.squeeze().detach().cpu().numpy()
+
+        if save_as:
+            name = save_as + ("_aug_cam" if aug_smooth else "_cam")
+
+            self.to_gif(input.squeeze().cpu().numpy(), result, name)
+
+        return result
 
 
 class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
@@ -120,6 +240,7 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
         self.progress = progress
         self.boxes = boxes
         self.vanilla = vanilla
+        self.img_aug = AugSmoothTransform()
 
     def to(self, *args, **kwargs):
         self.model = self.model.to(*args, **kwargs)
@@ -130,8 +251,8 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
     def get_saliency(
         self,
         input: torch.Tensor,
-        target_obj,
-        target_cls,
+        key,
+        index,
         saliency=torch.abs,
     ):
 
@@ -144,15 +265,8 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
         if self.postprocess is not None:
             output = self.postprocess(output)
 
-        if self.boxes:
-            assert "boxes" in output
-            boxes = output["boxes"].squeeze()[target_obj]
-        else:
-            boxes = torch.tensor([0.0]).to(self.device)
+        out = output[key][index].sum()
 
-        out = output["labels"][0, target_obj, target_cls]
-
-        out += boxes.sum()
         out.backward()
 
         out = saliency(input.grad.data)
@@ -162,18 +276,15 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
     def get_smooth_grad(
         self,
         input: torch.Tensor,
-        target_obj,
-        target_cls,
+        key,
+        index,
         num_passes=50,
     ):
-
-        imin, imax = input.min(), input.max()
         input = input.to(self.device)
 
-        grad, output = self.get_saliency(input, target_obj, target_cls)
+        grad, output = self.get_saliency(input, key, index)
 
         grads = [grad]
-        loc = torch.tensor([0.0]).to(self.device)
 
         progress = range(num_passes)
         if self.progress:
@@ -181,30 +292,18 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
 
         for _ in progress:
 
-            scale = self.sg_scale.sample() * (imax - imin)
-            scale = scale.to(self.device)
-
-            noise = Normal(loc, scale).sample(input.size())
-            noise = noise.to(self.device).view(*input.size())
-
-            grads.append(
-                self.get_saliency(
-                    input + noise,
-                    target_obj,
-                    target_cls,
-                )[0]
-            )
+            grads.append(self.get_saliency(self.img_aug(input), key, index)[0])
 
         return grad.detach().cpu(), torch.stack(grads).mean(dim=0).detach().cpu()
 
     def forward(
         self,
         input,
-        target_obj,
-        target_cls,
-        num_passes=50,
-        gif=True,
-        name_prefix="",
+        index,
+        key="labels",
+        num_passes=15,
+        save_as=False,
+        crop=False,
     ):
 
         self.model.eval()
@@ -216,24 +315,17 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
         assert input.size(0) == 1, f"Expecting batch size 1, got bs={input.size(0)}"
 
         vanilla_grad, smooth_grad = self.get_smooth_grad(
-            input, target_obj, target_cls, num_passes=num_passes
+            input, key, index, num_passes=num_passes
         )
 
-        if gif:
+        if save_as:
 
-            input = input.squeeze().numpy()
-            for prefix, grad in zip(
-                ("vanilla_grad", "smooth_grad"), (vanilla_grad, smooth_grad)
-            ):
+            input = input.squeeze().cpu().numpy()
 
-                if prefix == "vanilla_grad" and not self.vanilla:
-                    continue
-
-                if name_prefix:
-                    prefix = f"{prefix}_{name_prefix}"
-
-                name = f"{prefix}_{self.NAMES[0][target_obj]}{self.NAMES[1][target_cls]}_{num_passes}p"
-                grad = grad.squeeze().numpy()
-                self.to_gif(input, grad, name)
+            if self.vanilla:
+                vanilla_grad.squeeze().numpy()
+                self.to_gif(input, vanilla_grad, f"{save_as}_vanilla_grad")
+            smooth_grad = smooth_grad.squeeze().cpu().numpy()
+            self.to_gif(input, smooth_grad, f"{save_as}_smooth_grad")
 
         return smooth_grad
