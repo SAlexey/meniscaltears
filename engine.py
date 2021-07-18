@@ -60,8 +60,12 @@ def evaluate(
             if postprocess is not None:
                 output = postprocess(output, **postprocess_kwargs)
 
+            target = {k: v.detach() for k, v in target.items()}
+            output = {k: v.detach() for k, v in output.items()} 
+            
             targets.append(target)
-            outputs.append({k: v.detach().cpu() for k, v in output.items()})
+            outputs.append(output)
+
             med_lat_pred.append(torch.max(output["labels"], dim=-1)[0])
             med_lat_target.append(torch.max(target["labels"], dim=-1)[0])
 
@@ -161,6 +165,9 @@ def train(
 
         _, output = _to_device(torch.empty(0), output)
         _, target = _to_device(torch.empty(0), output)
+        
+        output = {k: v.detach() for k, v in output.items()}
+        target = {k: v.detach() for k, v in target.items()}
 
         outputs.append(output)
         targets.append(target)
