@@ -496,13 +496,13 @@ def build(args):
 
         if args.limit_test_items:
             dataset_test.keys = dataset_test.keys[: args.limit_test_items]
-        if not args.tse:
-            dataset_visual = CropDataset(
-                data_dir,
-                anns_dir / "visual.json",
-                transforms=val_transforms,
-                size=dataset_train.img_size,
-            )
+        
+        dataset_visual = CropDataset(
+            data_dir,
+            anns_dir / "visual.json",
+            transforms=val_transforms,
+            size=dataset_train.img_size,
+        )
 
     else:
         train_transforms = Compose(
@@ -541,14 +541,14 @@ def build(args):
 
         if args.limit_test_items:
             dataset_test.anns = dataset_test.anns[: args.limit_test_items]
-        if not args.tse:
-            dataset_visual = MOAKSDataset(
-                data_dir,
-                anns_dir / "test.json",
-                binary=args.binary,
-                multilabel=args.multilabel,
-                transforms=val_transforms,
-            )
+        
+        dataset_visual = MOAKSDataset(
+            data_dir,
+            anns_dir / "visual.json",
+            binary=args.binary,
+            multilabel=args.multilabel,
+            transforms=val_transforms,
+        )
 
     dataloader_train = DataLoader(
         dataset_train,
@@ -570,15 +570,13 @@ def build(args):
         batch_size=args.batch_size,
         num_workers=args.num_workers,
     )
-    if args.tse:
-        dataloader_visual = None
-    else:
-        dataloader_visual = DataLoader(
-            dataset_visual,
-            shuffle=False,
-            batch_size=args.batch_size,
-            num_workers=args.num_workers,
-        )
+    
+    dataloader_visual = DataLoader(
+        dataset_visual,
+        shuffle=False,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+    )
 
     return dataloader_train, dataloader_val, dataloader_test, dataloader_visual
 
