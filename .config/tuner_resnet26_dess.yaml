@@ -11,7 +11,7 @@ model:
   intermediate_layer: layer7
   dropout: ??
   cls_dropout: ??
-batch_size: 16
+batch_size: ??
 lr_head: ??
 lr_backbone: ??
 
@@ -34,6 +34,9 @@ hydra:
         model.cls_dropout:
           type: range
           bounds: [0.1, 0.9]
+        batch_size:
+          type: range
+          bounds: [8, 64]
         lr_head:
           type: range 
           bounds: [0.01, 0.00001]
@@ -72,6 +75,7 @@ binary: true
 multilabel: true
 tse: false
 mix: false
+data_augmentation: true
 
 limit_train_items: false # will take up to limit_train_items training examples
 limit_val_items: false # will take up to limit_train_items validation examples
