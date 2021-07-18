@@ -21,6 +21,11 @@ class Compose(T.Compose):
         return img, target
 
 
+class NoOp(object):
+    def __call__(self, img, tgt=None, **kwargs):
+        return img, tgt
+
+
 def _apply_crop_to_boxes(boxes, crop):
 
     zmin, ymin, xmin, zmax, ymax, xmax = boxes.unbind(-1)
@@ -215,18 +220,20 @@ class RandomInvert(object):
 
 
 class AddGaussianNoise(object):
-    def __init__(self, mean=0., std=0.1, p=0.5):
+    def __init__(self, mean=0.0, std=0.1, p=0.5):
         self.std = std
         self.mean = mean
         self.p = p
-        
+
     def __call__(self, tensor, tgt=None):
         if random() <= self.p:
             tensor = tensor + torch.randn(tensor.size()) * self.std + self.mean
         return tensor, tgt
-    
+
     def __repr__(self):
-        return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
+        return self.__class__.__name__ + "(mean={0}, std={1})".format(
+            self.mean, self.std
+        )
 
 
 class RandomResizedBBoxSafeCrop(object):
@@ -318,7 +325,7 @@ class CropIMG(object):
         _assert_img(img, size=size)
         img = F.interpolate(
             img.unsqueeze(0), size, mode="trilinear", align_corners=False
-            ).squeeze(0)
+        ).squeeze(0)
         return img
 
     def crop_volume(self, img, crop):

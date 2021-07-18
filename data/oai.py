@@ -518,15 +518,21 @@ def build(args):
         
 
     else:
+
+        if args.tse: 
+            resize = Resize((44, 448, 448))
+        else:
+            resize = NoOp()
+
         
         if hasattr(args, 'data_augmentation'):
             if args.data_augmentation:
                 train_transforms = Compose(
-                    [to_tensor, RandomResizedBBoxSafeCrop(p=0.5),  Resize((44, 448, 448)), normalize, AddGaussianNoise(), RandomInvert(0.2)]
+                    [to_tensor, RandomResizedBBoxSafeCrop(p=0.5),  resize, normalize, AddGaussianNoise(), RandomInvert(0.2)]
                 )
         else:
             train_transforms = Compose(
-                (to_tensor, RandomResizedBBoxSafeCrop(p=0.5),  Resize((44, 448, 448)), normalize)
+                (to_tensor, RandomResizedBBoxSafeCrop(p=0.5),  resize, normalize)
             )
 
         dataset_train = MOAKSDataset(
@@ -540,7 +546,7 @@ def build(args):
         if args.limit_train_items:
             dataset_train.anns = dataset_train.anns[: args.limit_train_items]
 
-        val_transforms = Compose([to_tensor, Resize((44, 448, 448)), normalize])
+        val_transforms = Compose([to_tensor, resize, normalize])
         dataset_val = MOAKSDataset(
             data_dir,
             anns_dir / "val.json",
