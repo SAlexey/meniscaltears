@@ -302,7 +302,7 @@ def main(args):
             cam = MenisciCAM(
                 model,
                 model.backbone.layer7
-                if model.intermediate_layer=="layer7"
+                if model.intermediate_layer == "layer7"
                 else model.backbone.layer4,
                 use_cuda=args.device == "cuda",
                 postprocess=postprocess,
@@ -334,7 +334,7 @@ def main(args):
                                 cam_img = cam(img, meniscus, idx).squeeze().numpy()
                                 sal_img = (saliency(img, meniscus, idx).detach().cpu().squeeze().numpy())
                                 back_img = (g_back.forward(img, meniscus, idx).detach().cpu().squeeze().numpy())
-                                smooth_grad_img = smooth_grad(img, meniscus, idx)
+                                smooth_grad_img = smooth_grad(img, meniscus, idx[0])
                                 to_gif(img, smooth_grad_img.squeeze().numpy(), f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_gsmoothgrad.gif", cam_type="back")
                                 to_gif(img,sal_img,f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_saliency.gif",cam_type="back",)
                                 to_gif(img,back_img,f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_guided.gif",cam_type="back",)
@@ -439,7 +439,7 @@ def main(args):
                         "dropout_resnet": args.model.dropout,
                         "dropout_cls": args.model.cls_dropout,
                         "lr_head": args.lr_head,
-                        "lr_backbone": args.lr_backbone
+                        "lr_backbone": args.lr_backbone,
                     },
                     fh,
                 )
@@ -457,7 +457,7 @@ def main(args):
                         "epoch": epoch,
                         "val_loss": best_val_loss,
                         "roc_auc": avg_auc,
-                        "batch": args.batch_size
+                        "batch": args.batch_size,
                     },
                     fh,
                 )
