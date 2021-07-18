@@ -214,6 +214,21 @@ class RandomInvert(object):
         return img, tgt
 
 
+class AddGaussianNoise(object):
+    def __init__(self, mean=0., std=0.1, p=0.5):
+        self.std = std
+        self.mean = mean
+        self.p = p
+        
+    def __call__(self, tensor, tgt=None):
+        if random() <= self.p:
+            tensor = tensor + torch.randn(tensor.size()) * self.std + self.mean
+        return tensor, tgt
+    
+    def __repr__(self):
+        return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
+
+
 class RandomResizedBBoxSafeCrop(object):
     def __init__(self, p=0.5):
         self.p = p

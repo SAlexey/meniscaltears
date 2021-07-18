@@ -468,7 +468,11 @@ def build(args):
         normalize = Normalize(mean=(0.4945), std=(0.3782,))
 
     if args.crop:
-        train_transforms = Compose([to_tensor, CropIMG(), normalize])
+        if hasattr(args, 'data_augmentation'):
+            if args.data_augmentation:
+                train_transforms = Compose([to_tensor, CropIMG(), normalize, AddGaussianNoise(), RandomInvert(0.2)])
+        else: 
+            train_transforms = Compose([to_tensor, CropIMG(), normalize])
 
         dataset_train = CropDataset(
             data_dir,
@@ -514,9 +518,17 @@ def build(args):
         
 
     else:
-        train_transforms = Compose(
-            (to_tensor, RandomResizedBBoxSafeCrop(p=0.5),  Resize((44, 448, 448)), normalize)
-        )
+        
+        if hasattr(args, 'data_augmentation'):
+            if args.data_augmentation:
+                train_transforms = Compose(
+                    [to_tensor, RandomResizedBBoxSafeCrop(p=0.5),  Resize((44, 448, 448)), normalize, AddGaussianNoise(), RandomInvert(0.2)]
+                )
+        else:
+            train_transforms = Compose(
+                (to_tensor, RandomResizedBBoxSafeCrop(p=0.5),  Resize((44, 448, 448)), normalize)
+            )
+
         dataset_train = MOAKSDataset(
             data_dir,
             anns_dir / "train.json",
