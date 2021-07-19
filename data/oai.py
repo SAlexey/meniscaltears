@@ -470,7 +470,7 @@ def build(args):
     if args.crop:
         if hasattr(args, 'data_augmentation'):
             if args.data_augmentation:
-                train_transforms = Compose([to_tensor, CropIMG(), normalize, AddGaussianNoise(), RandomInvert(0.2)])
+                train_transforms = Compose([to_tensor, CropIMG(), normalize, AugSmoothTransform()])
         else: 
             train_transforms = Compose([to_tensor, CropIMG(), normalize])
 

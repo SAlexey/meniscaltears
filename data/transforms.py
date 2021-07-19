@@ -7,7 +7,9 @@ import torch.nn.functional as F
 from numbers import Number
 from random import randint, random
 import math
+import numpy as np
 from skimage.util import invert
+from torchvision.transforms import functional as TF
 
 
 class Compose(T.Compose):
@@ -216,6 +218,44 @@ class RandomInvert(object):
         if random() <= self.p:
             img = invert(img.numpy())
             img = torch.from_numpy(img)
+        return img, tgt
+
+class AugSmoothTransform(object):
+    def __init__(self, p=0.5):
+        self.p = p
+        self.noise = torch.distributions.Normal(0.1, 0.5)
+        self.transforms = [
+            self.random_hflip,
+            self.random_noise,
+            self.random_rotate,
+            self.random_multiply,
+        ]
+
+    def random_hflip(self, img):
+        if random() < self.p:
+            return img.flip(-1)
+        return img
+
+    def random_noise(self, img):
+        if random() <= self.p:
+            return img + self.noise.sample(img.size()).to(img.device)
+        return img
+
+    def random_rotate(self, img):
+        if random() < self.p:
+            angle = np.random.uniform(-5, +5)
+            rotated_img = [TF.rotate(i, angle) for i in img.unbind(2)]
+            return torch.stack(rotated_img, dim=2)
+        return img
+
+    def random_multiply(self, img):
+        if random() <= self.p:
+            return img * np.random.uniform(0.9, 1.1)
+        return img
+
+    def __call__(self, img, tgt=None):
+        for transform in self.transforms:
+            img = transform(img)
         return img, tgt
 
 
