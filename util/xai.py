@@ -323,7 +323,7 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
             input = input.squeeze().cpu().numpy()
 
             if self.vanilla:
-                vanilla_grad.squeeze().numpy()
+                vanilla_grad = vanilla_grad.squeeze().numpy()
                 self.to_gif(input, vanilla_grad, f"{save_as}_vanilla_grad")
             smooth_grad = smooth_grad.squeeze().cpu().numpy()
             self.to_gif(input, smooth_grad, f"{save_as}_smooth_grad")
