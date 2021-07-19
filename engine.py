@@ -96,6 +96,9 @@ def evaluate(
     # AFTER BCEWithLogitsLoss HAS DONE ITS THING
     outputs["labels"] = outputs["labels"].sigmoid()
 
+    outputs = {k: v.cpu() for k, v in outputs.items()}
+    targets = {k: v.cpu() for k, v in targets.items()}
+
     eval_results["outputs"] = outputs
     eval_results["targets"] = targets
     eval_results["total_loss"] = total_loss
@@ -198,6 +201,9 @@ def train(
 
     outputs = _reduce(outputs)
     targets = _reduce(targets)
+
+    outputs = {k: v.cpu() for k, v in outputs.items()}
+    targets = {k: v.cpu() for k, v in targets.items()}
 
     return {
         "outputs": outputs,
