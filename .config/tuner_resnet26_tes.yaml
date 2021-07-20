@@ -3,15 +3,20 @@ defaults:
 
 
 model:
-  _target_: models.resnet.ClsNet3D
+  _target_: models.resnet.DetNet3D
   backbone: dilated_resnet26_3d
   cls_output_dim: 6
   cls_hidden_dim: 2048
   cls_num_layers: 3
+  det_output_dim: 12
+  det_hidden_dim: 2048
+  det_num_layers: 3
+  det_dropout: ??
+
   intermediate_layer: layer7
   dropout: ??
   cls_dropout: ??
-batch_size: 16
+batch_size: 4 
 lr_head: ??
 lr_backbone: ??
 
@@ -58,11 +63,14 @@ metrics:
   - precision_recall_curve
   - confusion_matrix
 
-crop: true
+crop: false
 
 # CRITERION
 weights:
   labels: 1 # will only compute binary_cross_entropy_with_logits loss
+  boxes: 1
+  giou: 1
+
 
 # DATA 
 root: /scratch/htc/ashestak
@@ -72,6 +80,7 @@ binary: true
 multilabel: true
 tse: true
 mix: false
+data_augmentation: true
 
 limit_train_items: false # will take up to limit_train_items training examples
 limit_val_items: false # will take up to limit_train_items validation examples

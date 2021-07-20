@@ -19,7 +19,7 @@ from random import random, randrange
 class AugSmoothTransform(T.Compose):
     def __init__(self, p=0.5):
         self.p = p
-        self.noise = torch.distributions.Normal(0.1, 0.5)
+        self.noise = torch.distributions.Normal(0.1, 0.7)
         self.transforms = [
             self.random_hflip,
             self.random_noise,
@@ -39,14 +39,14 @@ class AugSmoothTransform(T.Compose):
 
     def random_rotate(self, img):
         if random() < self.p:
-            angle = np.random.uniform(-5, +5)
+            angle = np.random.uniform(-15, +15)
             rotated_img = [TF.rotate(i, angle) for i in img.unbind(2)]
             return torch.stack(rotated_img, dim=2)
         return img
 
     def random_multiply(self, img):
         if random() <= self.p:
-            return img * np.random.uniform(0.9, 1.1)
+            return img * np.random.uniform(0.8, 1.2)
         return img
 
 
@@ -71,10 +71,11 @@ class HeatmapGifOverlayMixin(object):
             heatmap[heatmap < p] = p
             cmap = "jet"
         else:
-            p = np.percentile(heatmap, q=99.5)
+            p = np.percentile(heatmap, q=98)
+            alpha = np.ones(heatmap.shape)
             alpha[heatmap < p] = 0
             alpha[heatmap >= p] = 0.7
-            heatmap = np.where(heatmap > p, heatmap)
+            heatmap[heatmap < p] = p
 
         for n in range(img.shape[0]):
             fd, path = tempfile.mkstemp(suffix=".png")
@@ -253,6 +254,7 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
         input: torch.Tensor,
         key,
         index,
+        regions,
         saliency=torch.abs,
     ):
 
@@ -264,9 +266,7 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
 
         if self.postprocess is not None:
             output = self.postprocess(output)
-
-        out = output[key][index].sum()
-
+        out = (output[key][index] * regions).sum()
         out.backward()
 
         out = saliency(input.grad.data)
@@ -278,11 +278,12 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
         input: torch.Tensor,
         key,
         index,
+        regions,
         num_passes=50,
     ):
         input = input.to(self.device)
 
-        grad, output = self.get_saliency(input, key, index)
+        grad, output = self.get_saliency(input, key, index, regions)
 
         grads = [grad]
 
@@ -292,7 +293,7 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
 
         for _ in progress:
 
-            grads.append(self.get_saliency(self.img_aug(input), key, index)[0])
+            grads.append(self.get_saliency(self.img_aug(input), key, index, regions)[0])
 
         return grad.detach().cpu(), torch.stack(grads).mean(dim=0).detach().cpu()
 
@@ -300,12 +301,13 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
         self,
         input,
         index,
+        regions,
         key="labels",
         num_passes=15,
         save_as=False,
         crop=False,
-    ):
-
+    ):  
+        regions = regions.to(self.device)
         self.model.eval()
 
         assert (
@@ -315,7 +317,7 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
         assert input.size(0) == 1, f"Expecting batch size 1, got bs={input.size(0)}"
 
         vanilla_grad, smooth_grad = self.get_smooth_grad(
-            input, key, index, num_passes=num_passes
+                input, key, index, regions, num_passes=num_passes
         )
 
         if save_as:
@@ -324,8 +326,8 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
 
             if self.vanilla:
                 vanilla_grad = vanilla_grad.squeeze().numpy()
-                self.to_gif(input, vanilla_grad, f"{save_as}_vanilla_grad")
+                self.to_gif(input, vanilla_grad, f"{save_as}_vanilla_grad", cam_type="gradient")
             smooth_grad = smooth_grad.squeeze().cpu().numpy()
-            self.to_gif(input, smooth_grad, f"{save_as}_smooth_grad")
+            self.to_gif(input, smooth_grad, f"{save_as}_smooth_grad", cam_type="gradient")
 
         return smooth_grad

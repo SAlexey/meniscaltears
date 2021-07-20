@@ -303,15 +303,18 @@ def main(args):
             sg_cam = GradCAM(model, model.backbone.layer7 if model.intermediate_layer == "layer7" else model.backbone.layer4, use_cuda=args.device=="cuda", postprocess=postprocess)
 
             for b_img, b_tgt in dataloader_visual:
-                for img in b_img:
+                b_targets = b_tgt["labels"]
+                ids = b_tgt['image_id']
+                for img, tgt, img_id in zip(b_img, b_targets, ids):
                     img = img.unsqueeze(0)
                     for meniscus in range(2):
+                        logging.info(tgt[meniscus])
                         index = (0, meniscus, ...)
-                        name = f"{b_tgt['image_id'][0].item()}_{LAT_MED[meniscus]}"
+                        name = f"{img_id.item()}_{LAT_MED[meniscus]}"
 
                         sg_cam(img, index, save_as=name) # saves vanilla cam
                         sg_cam(img, index, save_as=name, aug_smooth=True) # saves smooth cam
-                        sg_sal(img, index, save_as=name) # saves vanilla grad (if SmoothGradientSaliency(*args, vanilla=True)) and smooth grad
+                        sg_sal(img, index, tgt[meniscus], save_as=name) # saves vanilla grad (if SmoothGradientSaliency(*args, vanilla=True)) and smooth grad
 
         torch.save(test_results, "test_results.pt")
         logging.info("Testing finished, exitting")
