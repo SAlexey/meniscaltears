@@ -60,15 +60,6 @@ def evaluate(
             if postprocess is not None:
                 output = postprocess(output, **postprocess_kwargs)
 
-            target = {k: v.detach() for k, v in target.items()}
-            output = {k: v.detach() for k, v in output.items()} 
-            
-            targets.append(target)
-            outputs.append(output)
-
-            med_lat_pred.append(torch.max(output["labels"], dim=-1)[0])
-            med_lat_target.append(torch.max(target["labels"], dim=-1)[0])
-
             if criterion is not None:
                 target = {k: v.to(device) for k, v in target.items()}
 
@@ -77,16 +68,13 @@ def evaluate(
 
                 total_loss += loss.detach().cpu().item()
 
-                if loss_dict:
-                    losses.append({k: v.detach().cpu() for k, v in loss_dict.items()})
-
-    med_lat_pred = torch.cat(med_lat_pred, dim=0).cpu()
-    med_lat_target = torch.cat(med_lat_target, dim=0).cpu()
-    eval_results["lat_auc"] = roc_auc_score(med_lat_target[:, 0], med_lat_pred[:, 0])
-    eval_results["med_auc"] = roc_auc_score(med_lat_target[:, 1], med_lat_pred[:, 1])
-    eval_results["anywhere_auc"] = roc_auc_score(
-        torch.max(med_lat_target, dim=-1)[0], torch.max(med_lat_pred, dim=-1)[0]
-    )
+                losses.append({k: v.detach().cpu() for k, v in loss_dict.items()})
+            
+            target = {k: v.detach().cpu() for k, v in target.items()}
+            output = {k: v.detach().cpu() for k, v in output.items()} 
+            
+            targets.append(target)
+            outputs.append(output)
 
     outputs = _reduce(outputs)
     targets = _reduce(targets)
@@ -112,6 +100,27 @@ def evaluate(
         eval_results[name] = metric(
             targets, outputs, **metrics_kwargs.get(name, dict())
         )
+
+        if name == "roc_auc_score":
+            tgt, out = {}, {}
+            
+            # reduce labels to menisci first 
+            tgt["labels"] = targets["labels"].max(-1).values
+            out["labels"] = outputs["labels"].max(-1).values
+
+            # compute roc auc scores for menisci
+            eval_results[f"menisci_{name}"] = metric(tgt, out, names=("lateral", "medial"))
+
+            # reduce labels further to anywhere
+
+            tgt["labels"] = tgt["labels"].max(-1).values.unsqueeze(1)
+            out["labels"] = out["labels"].max(-1).values.unsqueeze(1)
+            
+            # compute roc auc for anywhere in the knee
+            eval_results[f"anywhere_{name}"] = metric(tgt, out, names=("knee", ))
+
+
+
 
     return eval_results
 

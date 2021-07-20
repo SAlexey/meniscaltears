@@ -182,46 +182,6 @@ def main(args):
     if dataloader_visual is None:
         dataloader_visual = dataloader_test
 
-    if args.mix:
-
-        dataset_train_mix = MixDataset(
-            dataloader_train.dataset.root,
-            "/scratch/htc/ashestak/meniscaltears/data/train.json",
-            "/scratch/htc/ashestak/meniscaltears/data/tse/train.json",
-            train=True,
-            transforms=Compose((RandomResizedBBoxSafeCrop(), Normalize())),
-        )
-        dataloader_train_mix = DataLoader(
-            dataset_train_mix,
-            shuffle=True,
-            num_workers=args.num_workers,
-            batch_size=args.batch_size,
-        )
-
-        tse_val_transform = Compose(
-            (ToTensor(), Resize((160, 384, 384)), Normalize(mean=(0.359), std=(0.278,)))
-        )
-
-        dataset_val_tse = MOAKSDataset(
-            dataloader_val.dataset.root,
-            "/scratch/htc/ashestak/meniscaltears/data/tse/val.json",
-            transforms=tse_val_transform,
-        )
-        dataloader_val_tse = DataLoader(
-            dataset_val_tse, num_workers=args.num_workers, batch_size=args.batch_size
-        )
-
-        dataset_test_tse = MOAKSDataset(
-            dataloader_val.dataset.root,
-            "/scratch/htc/ashestak/meniscaltears/data/tse/test.json",
-            transforms=tse_val_transform,
-        )
-
-        dataloader_test_tse = DataLoader(
-            dataset_test_tse, num_workers=args.num_workers, batch_size=args.batch_size
-        )
-
-        dataloader_train = dataloader_train_mix
     device = torch.device(args.device)
 
     logging.info(f"Running On Device: {device}")
@@ -279,23 +239,33 @@ def main(args):
     # THEY WILL BE ACTIVATED IN EVALIATION [enpgine.py]
     # AFTER BCEWithLogitsLoss HAS DONE ITS THING
 
+
+    # smooth saliency maps
+    sg_sal = SmoothGradientSaliency(model, postprocess=postprocess, vanilla=True)
+    sg_cam = GradCAM(model, model.backbone.layer4, use_cuda=args.device=="cuda", postprocess=postprocess)
+
+
     if args.eval:
 
         logging.info("Running evaluation on the validation set")
         val_results = evaluate(
             model, dataloader_val, postprocess=postprocess, progress=True, **metrics
         )
-        logging.info(f"Validation AUC: {val_results['roc_auc_score']}")
+        if "roc_auc_score" in val_results:
+            logging.info(f"Validation AUC: {val_results['roc_auc_score']}")
 
         logging.info("Running evaluation on the test set")
         test_results = evaluate(
             model, dataloader_test, postprocess=postprocess, progress=True, **metrics
         )
-        logging.info(f"Test AUC: {test_results['roc_auc_score']}")
+        if "roc_auc_score" in test_results:
+            logging.info(f"Test AUC: {test_results['roc_auc_score']}")
+        
+        if "menisci_roc_auc_score" in test_results:
+            logging.info( f"Test AUC | medial: {test_results['menisci_roc_auc_score']['medial']} | lateral: {test_results['menisci_roc_auc_score']['lateral']}")
 
-        logging.info(
-            f"Test AUC | anywhere: {test_results['anywhere_auc']} | medial: {test_results['med_auc']} | lateral: {test_results['lat_auc']}"
-        )
+        if "anywhere_roc_auc_score" in test_results:
+            logging.info(f"Test AUC | anywhere: {test_results['anywhere_roc_auc_score']['knee']}")
 
         if args.cam:
             logging.info(f"Obtaining GradCAM")
@@ -315,7 +285,6 @@ def main(args):
                         sg_cam(img, index, save_as=name) # saves vanilla cam
                         sg_cam(img, index, save_as=name, aug_smooth=True) # saves smooth cam
                         sg_sal(img, index, tgt[meniscus], save_as=name) # saves vanilla grad (if SmoothGradientSaliency(*args, vanilla=True)) and smooth grad
-
         torch.save(test_results, "test_results.pt")
         logging.info("Testing finished, exitting")
         sys.exit(0)
@@ -422,7 +391,7 @@ def main(args):
             best_val_loss = epoch_loss
 
             torch.save(model.state_dict(), "best_bce_model.pt")
-            torch.save(eval_results, "best_bce_model_eval.ps")
+            torch.save(eval_results, "best_bce_model_eval.pt")
 
             with open("best_bce_model.json", "w") as fh:
                 json.dump(
@@ -439,6 +408,8 @@ def main(args):
         scheduler.step()
 
         if epoch % 5 == 0:
+            
+
             torch.save(
                 {
                     "epoch": epoch,
@@ -451,38 +422,20 @@ def main(args):
                 "checkpoint.ckpt",
             )
 
-        if args.mix:
+        if epoch % 30 == 0:
 
-            # evaluate again on tse dataset only
+            for b_img, b_tgt in dataloader_visual:
 
-            pos_weight = dataset_val_tse.pos_weight
-            if isinstance(pos_weight, torch.Tensor):
-                pos_weight = pos_weight.to(device)
+                for img in b_img:
+                    img = img.unsqueeze(0)
+                    for meniscus in range(2):
+                        index = (0, meniscus, ...)
+                        name = f"epoch{epoch}_{b_tgt['image_id'][0].item()}_{LAT_MED[meniscus]}"
 
-            eval_results = evaluate(
-                model,
-                dataloader_val_tse,
-                criterion=criterion,
-                criterion_kwargs={"pos_weight": pos_weight},
-                postprocess=postprocess,
-                **metrics,
-            )
 
-            if (metric := "roc_auc_score") in eval_results:
-                logs = [f"{metric:>26} TSE"]
-
-                for name, value in eval_results[metric].items():
-
-                    logs.append(f"{name:3} [{value:.4f}]")
-
-                logging.info(" | ".join(logs))
-
-            if (metric := "confusion_matrix") in eval_results:
-                for name, value in eval_results[metric].items():
-                    logs = [f"{metric:>18} TSE for {name:3}"]
-                    for label, each in zip(("tn", "fp", "fn", "tp"), value.flatten()):
-                        logs.append(f"{label.capitalize()} [{each:3d}]")
-                    logging.info(" | ".join(logs))
+                        sg_cam(img, index, save_as=name)
+                        sg_cam(img, index, save_as=name, aug_smooth=True)
+                        sg_sal(img, index, save_as=name)
 
     return best_val_loss
 
