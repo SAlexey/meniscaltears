@@ -1,0 +1,3 @@
+- eval=true
+- cam=true
+- state_dict=outputs/2021-07-19/21-35-15/best_bce_model.pt

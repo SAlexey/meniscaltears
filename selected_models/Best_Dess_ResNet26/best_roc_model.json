@@ -1,0 +1,1 @@
+{"backbone": "dilated_resnet26_3d", "epoch": 55, "val_loss": 0.6227051177633063, "roc_auc": 0.9118673160713314, "batch": 13, "dropout_resnet": 0.7589390277862549, "dropout_cls": 0.19373559951782227, "lr_head": 6.0997016757726675e-05, "lr_backbone": 0.00044399104237556467}

@@ -1,0 +1,48 @@
+model:
+  _target_: models.resnet.ClsNet3D
+  backbone: dilated_resnet26_3d
+  cls_output_dim: 6
+  cls_hidden_dim: 2048
+  cls_num_layers: 3
+  intermediate_layer: layer7
+  dropout: 0.7589390277862549
+  cls_dropout: 0.19373559951782227
+batch_size: 13
+lr_head: 6.0997016757726675e-05
+lr_backbone: 0.00044399104237556467
+device: cuda
+checkpoint: false
+state_dict: outputs/2021-07-19/21-35-15/best_bce_model.pt
+load_mlp: true
+eval: true
+eval_img: null
+cam: true
+meniscus:
+- 0
+- 1
+metrics:
+- balanced_accuracy
+- roc_curve
+- roc_auc_score
+- precision_recall_curve
+- confusion_matrix
+crop: true
+weights:
+  labels: 1
+root: /scratch/htc/ashestak
+data_dir: oai/v00/data/inputs
+anns_dir: meniscaltears/data
+binary: true
+multilabel: true
+data_augmentation: true
+tse: false
+mix: false
+limit_train_items: false
+limit_val_items: false
+limit_test_items: false
+num_epochs: 100
+num_workers: 8
+lr: 0.0001
+lr_drop_step: 50
+lr_drop_rate: 0.5
+window: 20

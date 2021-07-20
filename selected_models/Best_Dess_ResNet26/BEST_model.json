@@ -1,0 +1,1 @@
+{"backbone": "dilated_resnet26_3d", "epoch": 75, "val_loss": 0.6164652841827755, "roc_auc": 0.9065342109420484, "batch": 13}

@@ -36,7 +36,7 @@ from einops import rearrange
 import sys
 from data.oai import build, CropDataset, MOAKSDataset, MixDataset
 from util.cam import MenisciCAM, to_gif, MenisciSaliency, GuidedBackprop
-from util.xai import SmoothGradientSaliency
+from util.xai import SmoothGradientSaliency, GradCAM
 from models.resnet import DilationResNet3D
 
 
@@ -299,48 +299,19 @@ def main(args):
 
         if args.cam:
             logging.info(f"Obtaining GradCAM")
-            cam = MenisciCAM(
-                model,
-                model.backbone.layer7
-                if model.intermediate_layer == "layer7"
-                else model.backbone.layer4,
-                use_cuda=args.device == "cuda",
-                postprocess=postprocess,
-            )
-            saliency = MenisciSaliency(
-                model, use_cuda=args.device == "cuda", postprocess=postprocess
-            )
-            g_back = GuidedBackprop(
-                model,
-                use_cuda=args.device == "cuda",
-                postprocess=postprocess,
-            )
+            sg_sal = SmoothGradientSaliency(model, postprocess=postprocess, vanilla=True)
+            sg_cam = GradCAM(model, model.backbone.layer7 if model.intermediate_layer == "layer7" else model.backbone.layer4, use_cuda=args.device=="cuda", postprocess=postprocess)
 
-            smooth_grad = SmoothGradientSaliency(model, postprocess=postprocess)
+            for b_img, b_tgt in dataloader_visual:
+                for img in b_img:
+                    img = img.unsqueeze(0)
+                    for meniscus in range(2):
+                        index = (0, meniscus, ...)
+                        name = f"{b_tgt['image_id'][0].item()}_{LAT_MED[meniscus]}"
 
-            for bs_img, bs_ann in dataloader_visual:
-                for i in range(len(bs_img)):
-                    img = bs_img[i].unsqueeze(0)
-                    ann = dict()
-                    for key in bs_ann.keys():
-                        ann[key] = bs_ann[key][i]
-                    for meniscus in args.meniscus:
-                        if ann["labels"][meniscus].any():
-                            men_labels = (
-                                ann["labels"][meniscus].detach().cpu().numpy().flatten()
-                            )
-                            for idx in np.argwhere(men_labels > 0):
-                                # fmt: off
-                                cam_img = cam(img, meniscus, idx).squeeze().numpy()
-                                sal_img = (saliency(img, meniscus, idx).detach().cpu().squeeze().numpy())
-                                back_img = (g_back.forward(img, meniscus, idx).detach().cpu().squeeze().numpy())
-                                smooth_grad_img = smooth_grad(img, meniscus, idx[0])
-                                to_gif(img, smooth_grad_img.squeeze().numpy(), f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_gsmoothgrad.gif", cam_type="back")
-                                to_gif(img,sal_img,f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_saliency.gif",cam_type="back",)
-                                to_gif(img,back_img,f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_guided.gif",cam_type="back",)
-                                #cam_img = cam_img * back_img 
-                                to_gif(img, cam_img,f"{ann['image_id'].item()}_{LAT_MED[meniscus]}_{REGION[idx[0]]}_grad_cam.gif", cam_type="grad")
-                                # fmt: on
+                        sg_cam(img, index, save_as=name) # saves vanilla cam
+                        sg_cam(img, index, save_as=name, aug_smooth=True) # saves smooth cam
+                        sg_sal(img, index, save_as=name) # saves vanilla grad (if SmoothGradientSaliency(*args, vanilla=True)) and smooth grad
 
         torch.save(test_results, "test_results.pt")
         logging.info("Testing finished, exitting")
