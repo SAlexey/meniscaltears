@@ -71,7 +71,7 @@ class HeatmapGifOverlayMixin(object):
             heatmap[heatmap < p] = p
             cmap = "jet"
         else:
-            p = np.percentile(heatmap, q=98)
+            p = np.percentile(heatmap, q=99)
             alpha = np.ones(heatmap.shape)
             alpha[heatmap < p] = 0
             alpha[heatmap >= p] = 0.7

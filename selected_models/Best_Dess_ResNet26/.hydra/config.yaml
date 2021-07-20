@@ -12,7 +12,7 @@ lr_head: 6.0997016757726675e-05
 lr_backbone: 0.00044399104237556467
 device: cuda
 checkpoint: false
-state_dict: outputs/2021-07-19/21-35-15/best_bce_model.pt
+state_dict: selected_models/Best_Dess_ResNet26/BEST_model.pt
 load_mlp: true
 eval: true
 eval_img: null
