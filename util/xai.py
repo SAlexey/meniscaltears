@@ -19,7 +19,7 @@ from random import random, randrange
 class AugSmoothTransform(T.Compose):
     def __init__(self, p=0.5):
         self.p = p
-        self.noise = torch.distributions.Normal(0.1, 0.7)
+        self.noise = torch.distributions.Normal(0.1, 0.5)
         self.transforms = [
             self.random_hflip,
             self.random_noise,
@@ -39,14 +39,14 @@ class AugSmoothTransform(T.Compose):
 
     def random_rotate(self, img):
         if random() < self.p:
-            angle = np.random.uniform(-15, +15)
+            angle = np.random.uniform(-5, +5)
             rotated_img = [TF.rotate(i, angle) for i in img.unbind(2)]
             return torch.stack(rotated_img, dim=2)
         return img
 
     def random_multiply(self, img):
         if random() <= self.p:
-            return img * np.random.uniform(0.8, 1.2)
+            return img * np.random.uniform(0.9, 1.1)
         return img
 
 
