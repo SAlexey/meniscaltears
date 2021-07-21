@@ -278,8 +278,8 @@ def main(args):
                 for img, tgt, img_id in zip(b_img, b_targets, ids):
                     img = img.unsqueeze(0)
                     for meniscus in range(2):
-                        logging.info(tgt[meniscus])
-                        index = (0, meniscus, ...)
+                        pos_labels = tgt[meniscus].nonzero() # indeces where labels > 0
+                        index = (0, meniscus, pos_labels)
                         name = f"{img_id.item()}_{LAT_MED[meniscus]}"
 
                         sg_cam(img, index, save_as=name) # saves vanilla cam
@@ -307,6 +307,7 @@ def main(args):
             postprocess=postprocess,
             window=args.window,
             epoch=epoch,
+            progress=True
         )
 
         epoch_time = train_results["total_time"]
@@ -388,6 +389,8 @@ def main(args):
                 )
 
         if epoch_loss < best_val_loss:
+            
+            logging.info(f"Best Epoch Validation loss achieved!")
             best_val_loss = epoch_loss
 
             torch.save(model.state_dict(), "best_bce_model.pt")
@@ -404,7 +407,7 @@ def main(args):
                     },
                     fh,
                 )
-
+            logging.info("Best Model Saved!")
         scheduler.step()
 
         if epoch % 5 == 0:
@@ -421,22 +424,23 @@ def main(args):
                 },
                 "checkpoint.ckpt",
             )
+            logging.info("Checkpoint Saved!")
 
-        if epoch % 30 == 0:
-
-            for b_img, b_tgt in dataloader_visual:
-
-                for img in b_img:
-                    img = img.unsqueeze(0)
-                    for meniscus in range(2):
-                        index = (0, meniscus, ...)
-                        name = f"epoch{epoch}_{b_tgt['image_id'][0].item()}_{LAT_MED[meniscus]}"
-
-
-                        sg_cam(img, index, save_as=name)
-                        sg_cam(img, index, save_as=name, aug_smooth=True)
-                        sg_sal(img, index, save_as=name)
-
+#        if epoch % 30 == 0:
+#
+#            for b_img, b_tgt in dataloader_visual:
+#
+#                for img in b_img:
+#                    img = img.unsqueeze(0)
+#                    for meniscus in range(2):
+#                        index = (0, meniscus, ...)
+#                        name = f"epoch{epoch}_{b_tgt['image_id'][0].item()}_{LAT_MED[meniscus]}"
+#
+#
+#                        sg_cam(img, index, save_as=name)
+#                        sg_cam(img, index, save_as=name, aug_smooth=True)
+#                        sg_sal(img, index, save_as=name)
+#
     return best_val_loss
 
 
