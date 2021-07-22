@@ -230,7 +230,9 @@ def main(args):
     logging.info(
         f'Running model on dataset {"with" if isinstance(dataloader_train.dataset, CropDataset) else "without"} cropping\n'
     )
-    logging.info(f"Random Data augmentation: {args.data_augmentation if hasattr(args, 'data_augmentation') else False}")
+    logging.info(
+        f"Random Data augmentation: {args.data_augmentation if hasattr(args, 'data_augmentation') else False}"
+    )
 
     metrics = {key: METRICS[key] for key in args.metrics}
 
@@ -239,53 +241,85 @@ def main(args):
     # THEY WILL BE ACTIVATED IN EVALIATION [enpgine.py]
     # AFTER BCEWithLogitsLoss HAS DONE ITS THING
 
-
     # smooth saliency maps
     sg_sal = SmoothGradientSaliency(model, postprocess=postprocess, vanilla=True)
-    sg_cam = GradCAM(model, model.backbone.layer4, use_cuda=args.device=="cuda", postprocess=postprocess)
-
+    sg_cam = GradCAM(
+        model,
+        model.backbone.layer4,
+        use_cuda=args.device == "cuda",
+        postprocess=postprocess,
+    )
 
     if args.eval:
 
-        logging.info("Running evaluation on the validation set")
-        val_results = evaluate(
-            model, dataloader_val, postprocess=postprocess, progress=True, **metrics
-        )
-        if "roc_auc_score" in val_results:
-            logging.info(f"Validation AUC: {val_results['roc_auc_score']}")
+        # logging.info("Running evaluation on the validation set")
+        # val_results = evaluate(
+        #     model, dataloader_val, postprocess=postprocess, progress=True, **metrics
+        # )
+        # if "roc_auc_score" in val_results:
+        #     logging.info(f"Validation AUC: {val_results['roc_auc_score']}")
 
-        logging.info("Running evaluation on the test set")
-        test_results = evaluate(
-            model, dataloader_test, postprocess=postprocess, progress=True, **metrics
-        )
-        if "roc_auc_score" in test_results:
-            logging.info(f"Test AUC: {test_results['roc_auc_score']}")
-        
-        if "menisci_roc_auc_score" in test_results:
-            logging.info( f"Test AUC | medial: {test_results['menisci_roc_auc_score']['medial']} | lateral: {test_results['menisci_roc_auc_score']['lateral']}")
+        # logging.info("Running evaluation on the test set")
+        # test_results = evaluate(
+        #     model, dataloader_test, postprocess=postprocess, progress=True, **metrics
+        # )
+        # if "roc_auc_score" in test_results:
+        #     logging.info(f"Test AUC: {test_results['roc_auc_score']}")
 
-        if "anywhere_roc_auc_score" in test_results:
-            logging.info(f"Test AUC | anywhere: {test_results['anywhere_roc_auc_score']['knee']}")
+        # if "menisci_roc_auc_score" in test_results:
+        #     logging.info(
+        #         f"Test AUC | medial: {test_results['menisci_roc_auc_score']['medial']} | lateral: {test_results['menisci_roc_auc_score']['lateral']}"
+        #     )
+
+        # if "anywhere_roc_auc_score" in test_results:
+        #     logging.info(
+        #         f"Test AUC | anywhere: {test_results['anywhere_roc_auc_score']['knee']}"
+        #     )
 
         if args.cam:
             logging.info(f"Obtaining GradCAM")
-            sg_sal = SmoothGradientSaliency(model, postprocess=postprocess, vanilla=True)
-            sg_cam = GradCAM(model, model.backbone.layer7 if model.intermediate_layer == "layer7" else model.backbone.layer4, use_cuda=args.device=="cuda", postprocess=postprocess)
+            sg_sal = SmoothGradientSaliency(
+                model, postprocess=postprocess, vanilla=True
+            )
+            sg_cam = GradCAM(
+                model,
+                model.backbone.layer7
+                if model.intermediate_layer == "layer7"
+                else model.backbone.layer4,
+                use_cuda=args.device == "cuda",
+                postprocess=postprocess,
+            )
 
             for b_img, b_tgt in dataloader_visual:
                 b_targets = b_tgt["labels"]
-                ids = b_tgt['image_id']
-                for img, tgt, img_id in zip(b_img, b_targets, ids):
+                ids = b_tgt["image_id"]
+                for i, (img, tgt, img_id) in enumerate(zip(b_img, b_targets, ids)):
                     img = img.unsqueeze(0)
                     for meniscus in range(2):
-                        pos_labels = tgt[meniscus].nonzero() # indeces where labels > 0
+                        pos_labels = tgt[meniscus].nonzero()  # indeces where labels > 0
                         index = (0, meniscus, pos_labels)
+
                         name = f"{img_id.item()}_{LAT_MED[meniscus]}"
 
-                        sg_cam(img, index, save_as=name) # saves vanilla cam
-                        sg_cam(img, index, save_as=name, aug_smooth=True) # saves smooth cam
-                        sg_sal(img, index, tgt[meniscus], save_as=name) # saves vanilla grad (if SmoothGradientSaliency(*args, vanilla=True)) and smooth grad
-        torch.save(test_results, "test_results.pt")
+                        # sg_cam(img, index, save_as=name)  # saves vanilla cam
+                        # sg_cam(
+                        #     img, index, save_as=name, aug_smooth=True, target=[]
+                        # )  # saves smooth cam
+
+                        if args.crop:
+                            target = None
+                        else:
+                            target = b_tgt["boxes"][i]
+
+                        sg_sal(
+                            img,
+                            index,
+                            tgt[meniscus],
+                            save_as=name,
+                            boxes=target,
+                            num_passes=1,
+                        )  # saves vanilla grad (if SmoothGradientSaliency(*args, vanilla=True)) and smooth grad
+        # torch.save(test_results, "test_results.pt")
         logging.info("Testing finished, exitting")
         sys.exit(0)
 
@@ -307,7 +341,7 @@ def main(args):
             postprocess=postprocess,
             window=args.window,
             epoch=epoch,
-            progress=True
+            progress=True,
         )
 
         epoch_time = train_results["total_time"]
@@ -389,7 +423,7 @@ def main(args):
                 )
 
         if epoch_loss < best_val_loss:
-            
+
             logging.info(f"Best Epoch Validation loss achieved!")
             best_val_loss = epoch_loss
 
@@ -411,7 +445,6 @@ def main(args):
         scheduler.step()
 
         if epoch % 5 == 0:
-            
 
             torch.save(
                 {
@@ -426,21 +459,21 @@ def main(args):
             )
             logging.info("Checkpoint Saved!")
 
-#        if epoch % 30 == 0:
-#
-#            for b_img, b_tgt in dataloader_visual:
-#
-#                for img in b_img:
-#                    img = img.unsqueeze(0)
-#                    for meniscus in range(2):
-#                        index = (0, meniscus, ...)
-#                        name = f"epoch{epoch}_{b_tgt['image_id'][0].item()}_{LAT_MED[meniscus]}"
-#
-#
-#                        sg_cam(img, index, save_as=name)
-#                        sg_cam(img, index, save_as=name, aug_smooth=True)
-#                        sg_sal(img, index, save_as=name)
-#
+    #        if epoch % 30 == 0:
+    #
+    #            for b_img, b_tgt in dataloader_visual:
+    #
+    #                for img in b_img:
+    #                    img = img.unsqueeze(0)
+    #                    for meniscus in range(2):
+    #                        index = (0, meniscus, ...)
+    #                        name = f"epoch{epoch}_{b_tgt['image_id'][0].item()}_{LAT_MED[meniscus]}"
+    #
+    #
+    #                        sg_cam(img, index, save_as=name)
+    #                        sg_cam(img, index, save_as=name, aug_smooth=True)
+    #                        sg_sal(img, index, save_as=name)
+    #
     return best_val_loss
 
 
