@@ -14,6 +14,7 @@ import os
 import torchvision.transforms as T
 from torchvision.transforms import functional as TF
 from random import random, randrange
+from data.transforms import crop_volume
 
 
 class AugSmoothTransform(T.Compose):
@@ -60,22 +61,25 @@ class HeatmapGifOverlayMixin(object):
         cmap = "hot"
         alpha = np.ones(len(img))
 
-        heatmap = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min())
-        heatmap = (heatmap - heatmap.mean()) / heatmap.std()
+        if heatmap.any():
+            heatmap = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min())
+            heatmap = (heatmap - heatmap.mean()) / heatmap.std()
 
-        if cam_type == "grad":
-            p = np.percentile(heatmap, 98)
-            alpha = np.ones(heatmap.shape)
-            alpha[heatmap < p] = 0
-            alpha[heatmap >= p] = 0.5
-            heatmap[heatmap < p] = p
-            cmap = "jet"
+            if cam_type == "grad":
+                p = np.percentile(heatmap, 98)
+                alpha = np.ones(heatmap.shape)
+                alpha[heatmap < p] = 0
+                alpha[heatmap >= p] = 0.5
+                heatmap[heatmap < p] = p
+                cmap = "jet"
+            else:
+                p = np.percentile(heatmap, q=99)
+                alpha = np.ones(heatmap.shape)
+                alpha[heatmap < p] = 0
+                alpha[heatmap >= p] = 0.7
+                heatmap[heatmap < p] = p
         else:
-            p = np.percentile(heatmap, q=99)
-            alpha = np.ones(heatmap.shape)
-            alpha[heatmap < p] = 0
-            alpha[heatmap >= p] = 0.7
-            heatmap[heatmap < p] = p
+            alpha *= 0
 
         for n in range(img.shape[0]):
             fd, path = tempfile.mkstemp(suffix=".png")
@@ -162,7 +166,7 @@ class GradCAM(nn.Module, HeatmapGifOverlayMixin):
         aug_smooth=False,
         num_passes=15,
         save_as=False,
-        crop=False,
+        target=None,
     ):
 
         if self.use_cuda:
@@ -295,7 +299,11 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
 
             grads.append(self.get_saliency(self.img_aug(input), key, index, regions)[0])
 
-        return grad.detach().cpu(), torch.stack(grads).mean(dim=0).detach().cpu()
+        return (
+            grad.detach().cpu(),
+            torch.stack(grads).mean(dim=0).detach().cpu(),
+            output,
+        )
 
     def forward(
         self,
@@ -305,8 +313,8 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
         key="labels",
         num_passes=15,
         save_as=False,
-        crop=False,
-    ):  
+        boxes=None,
+    ):
         regions = regions.to(self.device)
         self.model.eval()
 
@@ -316,18 +324,87 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
 
         assert input.size(0) == 1, f"Expecting batch size 1, got bs={input.size(0)}"
 
-        vanilla_grad, smooth_grad = self.get_smooth_grad(
-                input, key, index, regions, num_passes=num_passes
+        vanilla_grad, smooth_grad, output = self.get_smooth_grad(
+            input, key, index, regions, num_passes=num_passes
         )
 
         if save_as:
 
-            input = input.squeeze().cpu().numpy()
+            inputs = []
+            names = []
 
-            if self.vanilla:
-                vanilla_grad = vanilla_grad.squeeze().numpy()
-                self.to_gif(input, vanilla_grad, f"{save_as}_vanilla_grad", cam_type="gradient")
-            smooth_grad = smooth_grad.squeeze().cpu().numpy()
-            self.to_gif(input, smooth_grad, f"{save_as}_smooth_grad", cam_type="gradient")
+            if boxes is not None:
+
+                input = input.squeeze(0).detach()
+                vanilla_grad = vanilla_grad.squeeze(0)
+                smooth_grad = smooth_grad.squeeze(0)
+
+                box = box_cxcywh_to_xyxy(boxes)
+                box = denormalize_boxes(box)
+
+                box = box[index[1], [0, 3]].squeeze()
+
+                # crop (tgt_box_zmin, 0, 0, box_depth, img_height, img_width)
+                crop = box[0], 0, 0, box[1] - box[0], *input.size()[-2:]
+                print("crop target box", crop)
+
+                image, _ = crop_volume(input, crop)
+                image_grad, _ = crop_volume(smooth_grad, crop)
+
+                images = (image, image_grad)
+                image_names = ("image", "smooth_grad")
+
+                if self.vanilla:
+
+                    images += (crop_volume(vanilla_grad, crop)[0],)
+                    image_names += ("vanilla_grad",)
+
+                inputs.append(images)
+                names.append(image_names)
+
+                # crop by output
+                box = box_cxcywh_to_xyxy(output["boxes"])
+                box = denormalize_boxes(box)
+                box = box[index[:2]].squeeze()
+
+                # crop only by output box
+                crop = *box[:3], box[3] - box[0], box[4] - box[1], box[5] - box[2]
+
+                print("crop output box", crop)
+
+                image, _ = crop_volume(input, crop)
+                image_grad, _ = crop_volume(smooth_grad, crop)
+
+                images = (image, image_grad)
+                image_names = ("image_crop", "smooth_grad_crop")
+
+                if self.vanilla:
+
+                    images += (crop_volume(vanilla_grad, crop)[0],)
+                    image_names += ("vanilla_grad_crop",)
+
+                inputs.append(images)
+                names.append(image_names)
+
+            for input, name in zip(inputs, names):
+
+                image = input[0].squeeze().cpu().numpy()
+                image_name = name[0]
+
+                grad_images = input[1:]
+                grad_names = name[1:]
+
+                # save image only
+                zero_grad = np.zeros_like(image)
+                self.to_gif(image, zero_grad, f"{save_as}_{image_name}", cam_type="gradient")
+
+                for grad, grad_name in zip(grad_images, grad_names):
+                    grad = grad.squeeze().cpu().numpy()
+
+                    # save image with overlay gradient
+
+                    self.to_gif(
+                        image, grad, f"{save_as}_{grad_name}_overlay", cam_type="gradient"
+                    )
 
         return smooth_grad
