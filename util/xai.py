@@ -1,3 +1,4 @@
+import json
 from data.transforms import AddGaussianNoise
 import numpy as np
 from util.box_ops import box_cxcywh_to_xyxy, denormalize_boxes
@@ -333,6 +334,18 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
             inputs = []
             names = []
 
+            with open(f"{save_as}_output.json", "w") as fh:
+
+                labels = {
+                    k: v
+                    for k, v in zip(
+                        ("LAH", "LB", "LPH", "MAH", "MB", "MPH"),
+                        output["labels"].sigmoid().flatten(),
+                    )
+                }
+
+                json.dump(labels, fh)
+
             if boxes is not None:
 
                 input = input.squeeze(0).detach()
@@ -396,7 +409,9 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
 
                 # save image only
                 zero_grad = np.zeros_like(image)
-                self.to_gif(image, zero_grad, f"{save_as}_{image_name}", cam_type="gradient")
+                self.to_gif(
+                    image, zero_grad, f"{save_as}_{image_name}", cam_type="gradient"
+                )
 
                 for grad, grad_name in zip(grad_images, grad_names):
                     grad = grad.squeeze().cpu().numpy()
@@ -404,7 +419,10 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
                     # save image with overlay gradient
 
                     self.to_gif(
-                        image, grad, f"{save_as}_{grad_name}_overlay", cam_type="gradient"
+                        image,
+                        grad,
+                        f"{save_as}_{grad_name}_overlay",
+                        cam_type="gradient",
                     )
 
         return smooth_grad
