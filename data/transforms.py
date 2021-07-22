@@ -129,7 +129,7 @@ def crop_volume(img, crop, tgt=None):
     return img, tgt
 
 
-def random_bbox_safe_crop(img, tgt):
+def random_bbox_safe_crop(img, tgt, bbox_safe=False):
     """
     random crop that preserves the bounding box
 
@@ -149,8 +149,25 @@ def random_bbox_safe_crop(img, tgt):
          max_x(boxes) <= width <= img_width
     """
 
-    mins = torch.min(tgt["boxes"], 0).values[:3]
-    maxs = torch.max(tgt["boxes"], 0).values[-3:]
+    if bbox_safe:
+        mins = torch.min(tgt["boxes"], 0).values[:3]
+        maxs = torch.max(tgt["boxes"], 0).values[-3:]
+
+    else:
+
+        d, h, w = img.size()[-3:]
+
+        # preserve 95% of the depth
+        d = int(round(d * 0.975))
+
+        # preserve 80% of the height
+        h = int(round(h * 0.90))
+
+        # preserve 80% of the width
+        w = int(round(w * 0.90))
+
+        mins = torch.as_tensor((img.size(-3) - d, img.size(-2) - h, img.size(-2) - w))
+        maxs = torch.as_tensor((d, h, w))
 
     zmin = randint(0, mins[0])
     ymin = randint(0, mins[1])
@@ -220,10 +237,11 @@ class RandomInvert(object):
             img = torch.from_numpy(img)
         return img, tgt
 
+
 class AugSmoothTransform(object):
     def __init__(self, p=0.5):
         self.p = p
-        self.noise = torch.distributions.Normal(0.1, 0.5)
+        self.noise = torch.distributions.Normal(0.0, 0.1)
         self.transforms = [
             self.random_hflip,
             self.random_noise,
@@ -277,8 +295,9 @@ class AddGaussianNoise(object):
 
 
 class RandomResizedBBoxSafeCrop(object):
-    def __init__(self, p=0.5):
+    def __init__(self, p=0.5, bbox_safe=False):
         self.p = p
+        self.safe = bbox_safe
 
     def __call__(self, img, tgt):
 
@@ -286,7 +305,8 @@ class RandomResizedBBoxSafeCrop(object):
         size = img.size()[-3:]
 
         if random() <= self.p:
-            crop = random_bbox_safe_crop(img, tgt)
+
+            crop = random_bbox_safe_crop(img, tgt, bbox_safe=self.safe)
 
             img, tgt = crop_volume(img, crop, tgt=tgt)
             img, tgt = resize_volume(img, size, tgt=tgt)

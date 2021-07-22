@@ -468,17 +468,16 @@ def build(args):
         normalize = Normalize(mean=(0.4945), std=(0.3782,))
 
     if args.crop:
-        if hasattr(args, 'data_augmentation'):
+        if hasattr(args, "data_augmentation"):
             if args.data_augmentation:
-                train_transforms = Compose([to_tensor, CropIMG(), normalize, AugSmoothTransform()])
-        else: 
+                train_transforms = Compose(
+                    [to_tensor, CropIMG(), normalize, AugSmoothTransform()]
+                )
+        else:
             train_transforms = Compose([to_tensor, CropIMG(), normalize])
 
         dataset_train = CropDataset(
-            data_dir,
-            anns_dir / "train.json",
-            transforms=train_transforms,
-            tse = args.tse
+            data_dir, anns_dir / "train.json", transforms=train_transforms, tse=args.tse
         )
 
         if args.limit_train_items:
@@ -491,7 +490,7 @@ def build(args):
             anns_dir / "val.json",
             transforms=val_transforms,
             size=dataset_train.img_size,
-            tse=args.tse
+            tse=args.tse,
         )
 
         if args.limit_val_items:
@@ -502,37 +501,42 @@ def build(args):
             anns_dir / "test.json",
             transforms=val_transforms,
             size=dataset_train.img_size,
-            tse=args.tse
+            tse=args.tse,
         )
 
         if args.limit_test_items:
             dataset_test.keys = dataset_test.keys[: args.limit_test_items]
-        
+
         dataset_visual = CropDataset(
             data_dir,
             anns_dir / "visual.json",
             transforms=val_transforms,
             size=dataset_train.img_size,
-            tse=args.tse
+            tse=args.tse,
         )
-        
 
     else:
 
-        if args.tse: 
+        if args.tse:
             resize = Resize((44, 448, 448))
         else:
             resize = NoOp()
 
-        
-        if hasattr(args, 'data_augmentation'):
+        if hasattr(args, "data_augmentation"):
             if args.data_augmentation:
+                aug_smooth = AugSmoothTransform()
                 train_transforms = Compose(
-                    [to_tensor, RandomResizedBBoxSafeCrop(p=0.5),  resize, normalize, AddGaussianNoise(), RandomInvert(0.2)]
+                    [
+                        to_tensor,
+                        RandomResizedBBoxSafeCrop(p=0.5, bbox_safe=False),
+                        resize,
+                        normalize,
+                        aug_smooth,
+                    ]
                 )
         else:
             train_transforms = Compose(
-                (to_tensor, RandomResizedBBoxSafeCrop(p=0.5),  resize, normalize)
+                (to_tensor, RandomResizedBBoxSafeCrop(p=0.5, bbox_safe=False), resize, normalize)
             )
 
         dataset_train = MOAKSDataset(
@@ -568,7 +572,7 @@ def build(args):
 
         if args.limit_test_items:
             dataset_test.anns = dataset_test.anns[: args.limit_test_items]
-        
+
         dataset_visual = MOAKSDataset(
             data_dir,
             anns_dir / "visual.json",
@@ -597,7 +601,7 @@ def build(args):
         batch_size=args.batch_size,
         num_workers=args.num_workers,
     )
-    
+
     dataloader_visual = DataLoader(
         dataset_visual,
         shuffle=False,
