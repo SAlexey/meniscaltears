@@ -341,7 +341,6 @@ def main(args):
             postprocess=postprocess,
             window=args.window,
             epoch=epoch,
-            progress=True,
         )
 
         epoch_time = train_results["total_time"]
