@@ -5,7 +5,7 @@ defaults:
 # MODEL
 device: cuda
 checkpoint: false # path to the checkpoint
-state_dict: /scratch/visual/ashestak/meniscaltears/selected_models/resnet50_baseline/best_model.pt # path to the model state_dict (overrides model state_dict in checkpoint)
+state_dict: false # path to the model state_dict (overrides model state_dict in checkpoint)
 
 # TESTING
 eval: false # only run evaluation (uses test set)

@@ -342,11 +342,9 @@ def main(args):
                         "epoch": epoch,
                         "val_loss": best_val_loss,
                         "roc_auc": best_roc_auc,
-                        "batch": args.batch_size,
-                        "dropout_resnet": args.model.dropout,
-                        "dropout_cls": args.model.cls_dropout,
+                        "bs": args.batch_size,
                         "lr": args.lr,
-                        "lr_backbone": args.lr_backbone,
+                        "lr_b": args.lr_backbone,
                     },
                     fh,
                 )
