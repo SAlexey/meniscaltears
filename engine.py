@@ -1,11 +1,10 @@
 from collections import defaultdict
 from tempfile import TemporaryDirectory
 import time
-from typing import Dict, Iterable, Sequence
+from typing import Dict, Iterable
 import torch
 from torch import nn
 from tqdm import tqdm
-from sklearn.metrics import roc_auc_score
 
 from util.misc import SmoothedValue, _reduce, _to_device, _get_model_device
 import logging
@@ -44,12 +43,9 @@ def evaluate(
     if progress:
         loader = tqdm(loader)
 
-    med_lat_pred = []
-    med_lat_target = []
-
     with torch.no_grad():
         for input, target in loader:
-            input = input.to(_get_model_device(model))
+            input = input.to(device)
 
             t0 = time.time()
             output = model(input)
@@ -119,9 +115,6 @@ def evaluate(
             # compute roc auc for anywhere in the knee
             eval_results[f"anywhere_{name}"] = metric(tgt, out, names=("knee", ))
 
-
-
-
     return eval_results
 
 
@@ -142,10 +135,7 @@ def train(
     total_loss = 0
     total_time = 0
     total_steps = 0
-
-    outputs = []
-    targets = []
-
+    
     meters = defaultdict(lambda: SmoothedValue(window=window))
 
     device = _get_model_device(model)
@@ -155,7 +145,8 @@ def train(
 
     for step, (input, target) in enumerate(loader):
 
-        input, target = _to_device(input, target, device=device)
+        input = input.to(device)
+        target = {k: v.to(device) for k, v in target.items()}
 
         t0 = time.time()
 
@@ -174,16 +165,7 @@ def train(
         step_time = time.time() - t0
 
         loss = loss.detach().cpu().item()
-
-        _, output = _to_device(torch.empty(0), output)
-        _, target = _to_device(torch.empty(0), output)
         
-        output = {k: v.detach() for k, v in output.items()}
-        target = {k: v.detach() for k, v in target.items()}
-
-        outputs.append(output)
-        targets.append(target)
-
         total_loss += loss
         meters["loss"] += loss
         for name, loss in loss_dict.items():
@@ -208,15 +190,7 @@ def train(
         total_time += step_time
         total_steps += 1
 
-    outputs = _reduce(outputs)
-    targets = _reduce(targets)
-
-    outputs = {k: v.cpu() for k, v in outputs.items()}
-    targets = {k: v.cpu() for k, v in targets.items()}
-
     return {
-        "outputs": outputs,
-        "targets": targets,
         "total_loss": total_loss,
         "total_steps": total_steps,
         "total_time": total_time,

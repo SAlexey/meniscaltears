@@ -1,0 +1,32 @@
+_target_: models.detr.DETR3d
+num_classes: 3
+num_queries: 12
+
+transformer:
+  _target_: models.transformer.Transformer
+  nhead: 8
+  activation: "relu"
+  num_encoder_layers: 6
+  num_decoder_layers: 6
+  dim_feedforward: 2048
+  d_model: 264 # divisible by 2 (pos enc. 2d); 3 (pos.enc 3d) and 8 (num heads)
+  dropout: 0.1
+  normalize_before: false
+  return_intermediate_dec: false
+
+backbone:
+  _target_: models.backbone.Joiner
+  backbone:
+    _target_: models.backbone.Backbone
+    num_channels: 512
+    backbone:
+      _target_: torchvision.models._utils.IntermediateLayerGetter
+      model:
+        _target_: models.resnet.resnet18_3d
+      return_layers:
+        layer4: 0
+
+  position_embedding:
+    _target_: models.position_encoding.PositionEmbeddingSine3d
+    num_pos_feats: 88 # d_model // 3
+    normalize: True

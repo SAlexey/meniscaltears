@@ -441,7 +441,16 @@ class MixDataset(Dataset):
         return img, tgt
 
 
-def build(args):
+def build(
+    data_dir,
+    anns_dir,
+    binary=True,
+    multilabel=True,
+    limit_train_items=False,
+    limit_val_items=False,
+    limit_test_items=False,
+    train=False,
+):
 
     root = Path("/scratch/htc/ashestak")
 
@@ -451,165 +460,73 @@ def build(args):
     if not root.exists():
         raise ValueError(f"Invalid root directory: {root}")
 
-    data_dir = root / args.data_dir
-    anns_dir = root / args.anns_dir
-
-    if args.tse:
-        anns_dir = anns_dir / "tse"
+    data_dir = root / data_dir
+    anns_dir = root / anns_dir
 
     assert data_dir.exists(), "Provided data directory doesn't exist!"
     assert anns_dir.exists(), "Provided annotations directory doesn't exist!"
 
     to_tensor = ToTensor()
+    center_crop = CenterCropVolume((160, 320, 320))
+    resize = Resize((320, 320, 320))
 
-    if args.tse:
+    if "tse" in str(anns_dir):
         normalize = Normalize(mean=(0.21637,), std=(0.18688,))
     else:
         normalize = Normalize(mean=(0.4945), std=(0.3782,))
 
-    if args.crop:
-        if hasattr(args, "data_augmentation"):
-            if args.data_augmentation:
-                train_transforms = Compose(
-                    [to_tensor, CropIMG(), normalize, AugSmoothTransform()]
-                )
-        else:
-            train_transforms = Compose([to_tensor, CropIMG(), normalize])
+    transforms = Compose([to_tensor, center_crop, resize, normalize])
 
-        dataset_train = CropDataset(
-            data_dir, anns_dir / "train.json", transforms=train_transforms, tse=args.tse
+    if train:
+
+        train_transforms = Compose(
+            [
+                to_tensor,
+                center_crop,
+                RandomResizedBBoxSafeCrop(),
+                resize,
+                normalize,
+            ]
         )
-
-        if args.limit_train_items:
-            dataset_train.keys = dataset_train.keys[: args.limit_train_items]
-
-        val_transforms = Compose([ToTensor(), CropIMG(random=False), normalize])
-
-        dataset_val = CropDataset(
-            data_dir,
-            anns_dir / "val.json",
-            transforms=val_transforms,
-            size=dataset_train.img_size,
-            tse=args.tse,
-        )
-
-        if args.limit_val_items:
-            dataset_val.keys = dataset_val.keys[: args.limit_val_items]
-
-        dataset_test = CropDataset(
-            data_dir,
-            anns_dir / "test.json",
-            transforms=val_transforms,
-            size=dataset_train.img_size,
-            tse=args.tse,
-        )
-
-        if args.limit_test_items:
-            dataset_test.keys = dataset_test.keys[: args.limit_test_items]
-
-        dataset_visual = CropDataset(
-            data_dir,
-            anns_dir / "visual.json",
-            transforms=val_transforms,
-            size=dataset_train.img_size,
-            tse=args.tse,
-        )
-
-    else:
-
-        if args.tse:
-            resize = Resize((44, 448, 448))
-        else:
-            resize = NoOp()
-
-        if hasattr(args, "data_augmentation"):
-            if args.data_augmentation:
-                aug_smooth = AugSmoothTransform()
-                train_transforms = Compose(
-                    [
-                        to_tensor,
-                        RandomResizedBBoxSafeCrop(p=0.5, bbox_safe=False),
-                        resize,
-                        normalize,
-                        aug_smooth,
-                    ]
-                )
-        else:
-            train_transforms = Compose(
-                (to_tensor, RandomResizedBBoxSafeCrop(p=0.5, bbox_safe=False), resize, normalize)
-            )
 
         dataset_train = MOAKSDataset(
             data_dir,
             anns_dir / "train.json",
-            binary=args.binary,
-            multilabel=args.multilabel,
+            binary=binary,
+            multilabel=multilabel,
             transforms=train_transforms,
         )
 
-        if args.limit_train_items:
-            dataset_train.anns = dataset_train.anns[: args.limit_train_items]
+        if limit_train_items:
+            dataset_train.anns = dataset_train.anns[:limit_train_items]
 
-        val_transforms = Compose([to_tensor, resize, normalize])
         dataset_val = MOAKSDataset(
             data_dir,
             anns_dir / "val.json",
-            binary=args.binary,
-            multilabel=args.multilabel,
-            transforms=val_transforms,
+            binary=binary,
+            multilabel=multilabel,
+            transforms=transforms,
         )
 
-        if args.limit_val_items:
-            dataset_val.anns = dataset_val.anns[: args.limit_val_items]
+        if limit_val_items:
+            dataset_val.anns = dataset_val.anns[:limit_val_items]
+
+        return dataset_train, dataset_val
+
+    else:
 
         dataset_test = MOAKSDataset(
             data_dir,
             anns_dir / "test.json",
-            binary=args.binary,
-            multilabel=args.multilabel,
-            transforms=val_transforms,
+            binary=binary,
+            multilabel=multilabel,
+            transforms=transforms,
         )
 
-        if args.limit_test_items:
-            dataset_test.anns = dataset_test.anns[: args.limit_test_items]
+        if limit_test_items:
+            dataset_test.anns = dataset_test.anns[:limit_test_items]
 
-        dataset_visual = MOAKSDataset(
-            data_dir,
-            anns_dir / "visual.json",
-            binary=args.binary,
-            multilabel=args.multilabel,
-            transforms=val_transforms,
-        )
-
-    dataloader_train = DataLoader(
-        dataset_train,
-        shuffle=True,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-    )
-
-    dataloader_val = DataLoader(
-        dataset_val,
-        shuffle=False,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-    )
-
-    dataloader_test = DataLoader(
-        dataset_test,
-        shuffle=False,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-    )
-
-    dataloader_visual = DataLoader(
-        dataset_visual,
-        shuffle=False,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-    )
-
-    return dataloader_train, dataloader_val, dataloader_test, dataloader_visual
+        return dataset_test
 
 
 # %%

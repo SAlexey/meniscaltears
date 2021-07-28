@@ -1,11 +1,13 @@
 defaults:
-  - model: resnet50_cropped
+  - model: detr_3d
+  - data: oai
 
 # MODEL
 device: cuda
 checkpoint: false # path to the checkpoint
 state_dict: false # path to the model state_dict (overrides model state_dict in checkpoint)
-load_mlp: true # if false will omit cls_out and box_out and only load backbone state_dict
+
+# TESTING
 eval: false # only run evaluation (uses test set)
 cam: true # run grad cam for menisci (ignored if eval is false)
 meniscus: [0, 1] # run grad cam for these menisci (ignored if eval is false or cam is false)
@@ -16,30 +18,18 @@ metrics:
   - precision_recall_curve
   - confusion_matrix
 
-crop: false # use cropping dataset and criterion
-
 # CRITERION
 weights:
   labels: 1
-    # boxes: 5
-    # giou: 2
- 
-# DATA
-data_dir: oai/v00/data/inputs
-anns_dir: meniscaltears/data
-tse: false
-mix: false 
-binary: true
-multilabel: true
-limit_train_items: false # will take up to limit_train_items training examples
-limit_val_items: false # will take up to limit_train_items validation examples
-limit_test_items: false
+  boxes: 5
+  giou: 2
 
 # TRAINING HPARAMS
 num_epochs: 500
-num_workers: 8
 batch_size: 4
+num_workers: 4
 lr: 0.0001 # default learning rate
+lr_transformer: 0.001 # transformer learning rate
 lr_backbone: 0.001 # cnn learning rate
 lr_head: 0.001 # mlp learning rate
 lr_drop_step: 50

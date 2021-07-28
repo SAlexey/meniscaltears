@@ -76,7 +76,7 @@ class Transformer(nn.Module):
             pos=pos_embed,
             query_pos=query_embed,
         )
-        return hs.transpose(1, 2), memory.permute(1, 2, 0).view(bs, c, h, w)
+        return hs.transpose(1, 2), memory.permute(1, 2, 0).view(bs, c, d, h, w)
 
 
 class TransformerEncoder(nn.Module):
@@ -365,7 +365,7 @@ def _get_clones(module, N):
     return nn.ModuleList([copy.deepcopy(module) for i in range(N)])
 
 
-def build_transformer(args):
+def build(args):
     return Transformer(
         d_model=args.hidden_dim,
         dropout=args.dropout,

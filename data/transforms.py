@@ -219,6 +219,37 @@ class Normalize(object):
         return img, tgt
 
 
+class CenterCropVolume(object):
+    def __init__(self, output_size=(160, 360, 360)):
+        self.size = output_size
+
+    def __call__(self, img, tgt=None):
+
+        id, ih, iw = img.size()[-3:]
+        od, oh, ow = self.size
+
+        back, top, left = 0, 0, 0
+        depth, height, width = id, ih, iw
+
+        dd, dh, dw = id - od, oh - ih, ow - iw
+
+        if dd > 0:  # only crop if the output has to be smaller
+            back = math.ceil(dd / 2)
+            depth = id - back
+
+        if dh > 0:
+            top = math.ceil(dh / 2)
+            height = ih - top
+
+        if dw > 0:
+            left = math.ceil(dw / 2)
+            width = iw - left
+
+        crop = (back, top, left, depth, height, width)
+
+        return crop_volume(img, crop, tgt)
+
+
 class Resize(object):
     def __init__(self, size=(160, 384, 384)):
         self.size = size

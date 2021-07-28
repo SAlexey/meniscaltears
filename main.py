@@ -1,15 +1,4 @@
 #%%
-
-from matplotlib import pyplot as plt
-from torch.utils.data import DataLoader
-from data.transforms import (
-    RandomResizedBBoxSafeCrop,
-    Normalize,
-    Compose,
-    Resize,
-    ToTensor,
-)
-
 from functools import partial
 from typing import Dict
 from util.eval_utils import (
@@ -29,15 +18,13 @@ import hydra
 import numpy as np
 import torch
 import torch.nn.functional as F
-from hydra.utils import instantiate, to_absolute_path
+from hydra.utils import call, instantiate, to_absolute_path
 from torch import nn
 from util.box_ops import box_cxcywh_to_xyxy, generalized_box_iou
 from einops import rearrange
 import sys
-from data.oai import build, CropDataset, MOAKSDataset, MixDataset
-from util.cam import MenisciCAM, to_gif, MenisciSaliency, GuidedBackprop
-from util.xai import SmoothGradientSaliency, GradCAM
-from models.resnet import DilationResNet3D
+from util.xai import SmoothGradientSaliency
+from torch.utils.data import DataLoader
 
 
 REGION = {0: "anterior_horn", 1: "body", 2: "posterior_horn"}
@@ -103,22 +90,11 @@ class MixCriterion(nn.Module):
 # AFTER BCEWithLogitsLoss HAS DONE ITS THING
 class Postprocess(nn.Module):
     def forward(self, output: Dict[str, torch.Tensor]):
-        if "labels" in output:
-            output["labels"] = rearrange(
-                output["labels"],
-                "bs (menisci labels) -> bs menisci labels",
-                menisci=2,
-                labels=3,
-            )
+        if "pred_logits" in output:
+            output["labels"] = output.pop("pred_logits")
 
-        if "boxes" in output:
-            output["boxes"] = rearrange(
-                output["boxes"].sigmoid(),
-                "bs (menisci boxes) -> bs menisci boxes",
-                menisci=2,
-                boxes=6,
-            )
-
+        if "pred_boxes" in output:
+            output["boxes"] = output.pop("pred_boxes").sigmoid()
         return output
 
 
@@ -176,32 +152,32 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
 @hydra.main(config_path=".config/", config_name="config")
 def main(args):
     _set_random_seed(50899)
-    dataloader_train, dataloader_val, dataloader_test, dataloader_visual = build(args)
-    logging.info(f"Img size: {dataloader_train.dataset.__getitem__(0)[0].shape}")
 
-    if dataloader_visual is None:
-        dataloader_visual = dataloader_test
+    model = call(args.model)
+    criterion = MixCriterion(**args.weights)
 
     device = torch.device(args.device)
-
     logging.info(f"Running On Device: {device}")
 
-    model = instantiate(args.model)
-
-    criterion = MixCriterion(**args.weights)
     model.to(device)
-
-    mlp_params = [
-        *model.out_cls.parameters(),
-    ]
-
-    if hasattr(model, "out_box"):
-        for param in model.out_box.parameters():
-            mlp_params.append(param)
+    criterion.to(device)
 
     param_groups = [
-        {"params": model.backbone.parameters(), "lr": args.lr_backbone},
-        {"params": mlp_params, "lr": args.lr_head},
+        {
+            "params": [
+                p
+                for n, p in model.named_parameters()
+                if "backbone" in n and p.requires_grad
+            ],
+            "lr": args.lr_backbone,
+        },
+        {
+            "params": [
+                p
+                for n, p in model.named_parameters()
+                if "backbone" not in n and p.requires_grad
+            ]
+        },
     ]
 
     optimizer = torch.optim.Adam(param_groups, lr=args.lr)
@@ -225,15 +201,6 @@ def main(args):
         "confusion_matrix": partial(confusion_matrix, names=names),
     }
     logging.info(f"Running: {model}")
-    logging.info(f"Dilation Resnet26: {model.intermediate_layer=='layer7'}")
-    logging.info(f"Running model on {'TSE' if args.tse else 'DESS'} sequence")
-    logging.info(
-        f'Running model on dataset {"with" if isinstance(dataloader_train.dataset, CropDataset) else "without"} cropping\n'
-    )
-    logging.info(
-        f"Random Data augmentation: {args.data_augmentation if hasattr(args, 'data_augmentation') else False}"
-    )
-
     metrics = {key: METRICS[key] for key in args.metrics}
 
     postprocess = Postprocess()
@@ -243,54 +210,22 @@ def main(args):
 
     # smooth saliency maps
     sg_sal = SmoothGradientSaliency(model, postprocess=postprocess, vanilla=True)
-    sg_cam = GradCAM(
-        model,
-        model.backbone.layer4,
-        use_cuda=args.device == "cuda",
-        postprocess=postprocess,
-    )
+
+    data = call(args.data, train=not args.eval)
 
     if args.eval:
+        loader = DataLoader(data, batch_size=args.batch_size)
+        logging.info("Running evaluation on the test set")
+        test_results = evaluate(
+            model, loader, postprocess=postprocess, progress=True, **metrics
+        )
 
-        # logging.info("Running evaluation on the validation set")
-        # val_results = evaluate(
-        #     model, dataloader_val, postprocess=postprocess, progress=True, **metrics
-        # )
-        # if "roc_auc_score" in val_results:
-        #     logging.info(f"Validation AUC: {val_results['roc_auc_score']}")
-
-        # logging.info("Running evaluation on the test set")
-        # test_results = evaluate(
-        #     model, dataloader_test, postprocess=postprocess, progress=True, **metrics
-        # )
-        # if "roc_auc_score" in test_results:
-        #     logging.info(f"Test AUC: {test_results['roc_auc_score']}")
-
-        # if "menisci_roc_auc_score" in test_results:
-        #     logging.info(
-        #         f"Test AUC | medial: {test_results['menisci_roc_auc_score']['medial']} | lateral: {test_results['menisci_roc_auc_score']['lateral']}"
-        #     )
-
-        # if "anywhere_roc_auc_score" in test_results:
-        #     logging.info(
-        #         f"Test AUC | anywhere: {test_results['anywhere_roc_auc_score']['knee']}"
-        #     )
+        if "roc_auc_score" in test_results:
+            logging.info(f"Test AUC: {test_results['roc_auc_score']}")
 
         if args.cam:
             logging.info(f"Obtaining GradCAM")
-            sg_sal = SmoothGradientSaliency(
-                model, postprocess=postprocess, vanilla=True
-            )
-            sg_cam = GradCAM(
-                model,
-                model.backbone.layer7
-                if model.intermediate_layer == "layer7"
-                else model.backbone.layer4,
-                use_cuda=args.device == "cuda",
-                postprocess=postprocess,
-            )
-
-            for b_img, b_tgt in dataloader_visual:
+            for b_img, b_tgt in loader:
                 b_targets = b_tgt["labels"]
                 ids = b_tgt["image_id"]
                 for i, (img, tgt, img_id) in enumerate(zip(b_img, b_targets, ids)):
@@ -300,11 +235,6 @@ def main(args):
                         index = (0, meniscus, pos_labels)
 
                         name = f"{img_id.item()}_{LAT_MED[meniscus]}"
-
-                        # sg_cam(img, index, save_as=name)  # saves vanilla cam
-                        # sg_cam(
-                        #     img, index, save_as=name, aug_smooth=True, target=[]
-                        # )  # saves smooth cam
 
                         if args.crop:
                             target = None
@@ -318,23 +248,38 @@ def main(args):
                             save_as=name,
                             boxes=target,
                             num_passes=1,
-                        )  # saves vanilla grad (if SmoothGradientSaliency(*args, vanilla=True)) and smooth grad
-        # torch.save(test_results, "test_results.pt")
+                        )
+        torch.save(test_results, "test_results.pt")
         logging.info("Testing finished, exitting")
         sys.exit(0)
+
+    train_data, val_data = data
+
+    loader_train = DataLoader(
+        train_data,
+        shuffle=True,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+    )
+
+    loader_val = DataLoader(
+        val_data,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+    )
 
     # start training
     logging.info(f"Epoch {start}; Best Validation Loss {best_val_loss:.4f}")
     logging.info(f"Starting training")
     for epoch in range(start, epochs):
 
-        pos_weight = dataloader_train.dataset.pos_weight
+        pos_weight = loader_train.dataset.pos_weight
         if isinstance(pos_weight, torch.Tensor):
             pos_weight = pos_weight.to(device)
 
         train_results = train(
             model,
-            dataloader_train,
+            loader_train,
             optimizer,
             criterion,
             criterion_kwargs={"pos_weight": pos_weight},
@@ -351,13 +296,13 @@ def main(args):
             f"epoch [{epoch:04d} / {epochs:04d}] | training loss [{epoch_loss:.4f}] | trainig time [{epoch_time:.2f} ({step_time:.3f})]"
         )
 
-        pos_weight = dataloader_val.dataset.pos_weight
+        pos_weight = loader_val.dataset.pos_weight
         if isinstance(pos_weight, torch.Tensor):
             pos_weight = pos_weight.to(device)
 
         eval_results = evaluate(
             model,
-            dataloader_val,
+            loader_val,
             criterion,
             criterion_kwargs={"pos_weight": pos_weight},
             postprocess=postprocess,
@@ -391,10 +336,6 @@ def main(args):
                     log.append(f"{label.capitalize()} [{each:3d}]")
                 logging.info(" | ".join(log))
 
-        # weighting = pos_weight.detach().cpu().numpy().flatten()
-        # weighting /= weighting.sum()
-        # print(weighting)
-
         avg_auc = np.mean(
             list(eval_results.get("roc_auc_score", dict(default=-np.inf)).values())
         )
@@ -408,7 +349,7 @@ def main(args):
             with open("best_roc_model.json", "w") as fh:
                 json.dump(
                     {
-                        "backbone": args.model.backbone,
+                        "backbone": args.model.backbone.name,
                         "epoch": epoch,
                         "val_loss": best_val_loss,
                         "roc_auc": best_roc_auc,
@@ -417,6 +358,7 @@ def main(args):
                         "dropout_cls": args.model.cls_dropout,
                         "lr_head": args.lr_head,
                         "lr_backbone": args.lr_backbone,
+                        "lr_transformer": args.lr_transformer,
                     },
                     fh,
                 )
@@ -432,7 +374,7 @@ def main(args):
             with open("best_bce_model.json", "w") as fh:
                 json.dump(
                     {
-                        "backbone": args.model.backbone,
+                        "backbone": args.model.backbone.name,
                         "epoch": epoch,
                         "val_loss": best_val_loss,
                         "roc_auc": avg_auc,
@@ -458,21 +400,6 @@ def main(args):
             )
             logging.info("Checkpoint Saved!")
 
-    #        if epoch % 30 == 0:
-    #
-    #            for b_img, b_tgt in dataloader_visual:
-    #
-    #                for img in b_img:
-    #                    img = img.unsqueeze(0)
-    #                    for meniscus in range(2):
-    #                        index = (0, meniscus, ...)
-    #                        name = f"epoch{epoch}_{b_tgt['image_id'][0].item()}_{LAT_MED[meniscus]}"
-    #
-    #
-    #                        sg_cam(img, index, save_as=name)
-    #                        sg_cam(img, index, save_as=name, aug_smooth=True)
-    #                        sg_sal(img, index, save_as=name)
-    #
     return best_val_loss
 
 

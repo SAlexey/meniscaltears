@@ -3,6 +3,7 @@
 Backbone modules.
 """
 from collections import OrderedDict
+from models.resnet import resnet18_3d, resnet34_3d, resnet50_3d
 
 import torch
 import torch.nn.functional as F
@@ -12,29 +13,17 @@ from torchvision.models._utils import IntermediateLayerGetter
 from typing import Dict, List
 
 from util.misc import NestedTensor
-
-from .position_encoding import build_position_encoding
-from hydra.utils import instantiate
+from hydra.utils import call
 
 
-# helper functions
-
-
-def _replace_conv1(model):
-    """replace 1st conv layer to accept 1 channel inputs"""
-
-    old = model.conv1
-    new = nn.Conv3d(
-        in_channels=1,
-        out_channels=old.out_channels,
-        kernel_size=old.kernel_size,
-        stride=old.stride,
-        padding=old.padding,
-        dilation=old.dilation,
-        bias=old.bias is not None,
-    )
-    new.weight.data = old.weight.data.mean(1, keepdim=True)
-    model.conv1 = new
+BACKBONE = {
+    "resnet18": (torchvision.models.resnet18, 512),
+    "resnet34": (torchvision.models.resnet34, 512),
+    "resnet50": (torchvision.models.resnet50, 2048),
+    "resnet18_3d": (resnet18_3d, 512),
+    "resnet34_3d": (resnet34_3d, 512),
+    "resnet50_3d": (resnet50_3d, 2048),
+}
 
 
 class FrozenBatchNorm2d(torch.nn.Module):
@@ -96,26 +85,11 @@ class Backbone(nn.Module):
     def __init__(
         self,
         backbone: nn.Module,
-        train_backbone: bool,
-        return_interm_layers: bool,
+        num_channels: int,
     ):
         super().__init__()
-        for name, parameter in backbone.named_parameters():
-            if (
-                not train_backbone
-                or "layer2" not in name
-                and "layer3" not in name
-                and "layer4" not in name
-            ):
-                parameter.requires_grad_(False)
-        if return_interm_layers:
-            return_layers = {"layer1": "0", "layer2": "1", "layer3": "2", "layer4": "3"}
-        else:
-            return_layers = {"layer4": "0"}
-        self.body = IntermediateLayerGetter(
-            backbone.backbone, return_layers=return_layers
-        )
-        self.num_channels = 2048
+        self.body = backbone
+        self.num_channels = num_channels
 
     def forward(self, tensor_list: NestedTensor):
         xs = self.body(tensor_list.tensors)
@@ -131,6 +105,7 @@ class Backbone(nn.Module):
 class Joiner(nn.Sequential):
     def __init__(self, backbone, position_embedding):
         super().__init__(backbone, position_embedding)
+        self.num_channels = backbone.num_channels
 
     def forward(self, tensor_list: NestedTensor):
         xs = self[0](tensor_list)
@@ -141,14 +116,3 @@ class Joiner(nn.Sequential):
             # position encoding
             pos.append(self[1](x).to(x.tensors.dtype))
         return out, pos
-
-
-def build_backbone(args):
-    position_embedding = build_position_encoding(args)
-    train_backbone = args.lr_backbone > 0
-    resnet_backbone = instantiate(args.model)
-
-    backbone = Backbone(resnet_backbone, train_backbone, return_interm_layers=False)
-    model = Joiner(backbone, position_embedding)
-    model.num_channels = backbone.num_channels
-    return model
