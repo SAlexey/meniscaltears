@@ -339,16 +339,14 @@ def main(args):
             with open("best_roc_model.json", "w") as fh:
                 json.dump(
                     {
-                        "backbone": args.model.backbone.name,
                         "epoch": epoch,
                         "val_loss": best_val_loss,
                         "roc_auc": best_roc_auc,
                         "batch": args.batch_size,
                         "dropout_resnet": args.model.dropout,
                         "dropout_cls": args.model.cls_dropout,
-                        "lr_head": args.lr_head,
+                        "lr": args.lr,
                         "lr_backbone": args.lr_backbone,
-                        "lr_transformer": args.lr_transformer,
                     },
                     fh,
                 )
@@ -364,7 +362,6 @@ def main(args):
             with open("best_bce_model.json", "w") as fh:
                 json.dump(
                     {
-                        "backbone": args.model.backbone.name,
                         "epoch": epoch,
                         "val_loss": best_val_loss,
                         "roc_auc": avg_auc,
