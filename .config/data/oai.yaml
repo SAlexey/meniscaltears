@@ -1,6 +1,7 @@
 _target_: data.oai.build
 data_dir: oai/v00/data/inputs
 anns_dir: meniscaltears/data
+isotrope: false
 binary: true
 multilabel: true # AH, B, PH
 limit_train_items: false # will take up to N examples

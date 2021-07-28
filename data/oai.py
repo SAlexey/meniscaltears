@@ -450,6 +450,7 @@ def build(
     limit_val_items=False,
     limit_test_items=False,
     train=False,
+    isotrope=False,
 ):
 
     root = Path("/scratch/htc/ashestak")
@@ -468,9 +469,17 @@ def build(
 
     to_tensor = ToTensor()
     center_crop = CenterCropVolume((160, 320, 320))
-    resize = Resize((320, 320, 320))
 
-    if "tse" in str(anns_dir):
+    tse = "tse" in str(anns_dir)
+
+    if isotrope:
+        output_size = (320, 320, 320)
+    else:
+        output_size = (160, 320, 320) if not tse else (44, 320, 320)
+
+    resize = Resize(output_size)
+
+    if tse:
         normalize = Normalize(mean=(0.21637,), std=(0.18688,))
     else:
         normalize = Normalize(mean=(0.4945), std=(0.3782,))

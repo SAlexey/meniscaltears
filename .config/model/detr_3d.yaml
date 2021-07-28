@@ -22,7 +22,7 @@ backbone:
     backbone:
       _target_: torchvision.models._utils.IntermediateLayerGetter
       model:
-        _target_: models.resnet.resnet18_3d
+        _target_: models.resnet.resnet50_3d
       return_layers:
         layer4: 0
 

@@ -1,5 +1,6 @@
 #%%
 from functools import partial
+from collections import OrderedDict
 from typing import Dict
 from util.eval_utils import (
     balanced_accuracy_score,
@@ -116,18 +117,7 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
             logging.warning("Model weights in checkpoint have been overwritten!")
 
     if "model" in state_dict:
-        container = model
-        if not args.load_mlp:
-            logging.info("Only loading backbone weights")
-            # will ignore cls_out and box_out and only load backbone parameters
-            # usefull when swapping mlp heads
-            state_dict["model"] = {
-                k.replace("backbone.", ""): v
-                for k, v in state_dict["model"].items()
-                if "out" not in k
-            }
-            container = container.backbone
-        container.load_state_dict(state_dict["model"])
+        model.load(state_dict["model"])
 
     if "optimizer" in state_dict and optimizer is not None:
         optimizer.load_state_dict(state_dict["optimizer"])
