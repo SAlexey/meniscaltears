@@ -1,7 +1,11 @@
 #%%
 from functools import partial
 from collections import OrderedDict
+from pathlib import Path
 from typing import Dict
+import warnings
+
+from matplotlib import pyplot as plt
 from util.eval_utils import (
     balanced_accuracy_score,
     confusion_matrix,
@@ -20,8 +24,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from hydra.utils import call, instantiate, to_absolute_path
-from torch import nn
-from util.box_ops import box_cxcywh_to_xyxy, generalized_box_iou
+from torch import nn, hub
+from util.box_ops import box_cxcywh_to_xyxy, denormalize_boxes, generalized_box_iou
 from einops import rearrange
 import sys
 from util.xai import SmoothGradientSaliency
@@ -202,7 +206,7 @@ def main(args):
     logging.info(f"Running: {model}")
     metrics = {key: METRICS[key] for key in args.metrics}
 
-    postprocess = Postprocess()
+    postprocess = None  # Postprocess()
     # WARNING: NO SIGMOID IN POSTPROCESS FOR LABELS
     # THEY WILL BE ACTIVATED IN EVALIATION [enpgine.py]
     # AFTER BCEWithLogitsLoss HAS DONE ITS THING
@@ -398,6 +402,20 @@ def main(args):
 
 
 if __name__ == "__main__":
+
+    p = Path("/scratch/")
+
+    suffix = "ashestak/torch_hub"
+
+    if (p / "visual").exists():
+        hub.set_dir(p / "visual" / suffix)
+
+    elif (p / "htc").exists():
+        hub.set_dir(p / "htc" / suffix)
+
+    else:
+        warnings.warn("Unable to set torch hub directory! check yo /home/")
+
     main()
 
 # %%
