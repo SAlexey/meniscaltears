@@ -23,7 +23,7 @@ weights:
   labels: 1
   boxes: 5
   giou: 2
-  inter: 5
+  inter: 0.7
 
 # TRAINING HPARAMS
 num_epochs: 500

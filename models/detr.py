@@ -67,7 +67,7 @@ class DETR(nn.Module):
         outputs_coord = self.bbox_embed(hs).sigmoid()
         out = {"pred_logits": outputs_class[-1], "pred_boxes": outputs_coord[-1]}
         if self.aux_loss:
-            out["aux_outputs"] = self._set_aux_loss(outputs_class, outputs_coord)
+            out["aux"] = self._set_aux_loss(outputs_class, outputs_coord)
         return out
 
     @torch.jit.unused
@@ -79,6 +79,26 @@ class DETR(nn.Module):
             {"pred_logits": a, "pred_boxes": b}
             for a, b in zip(outputs_class[:-1], outputs_coord[:-1])
         ]
+
+
+class DETR2d(DETR):
+    def forward(self, samples: NestedTensor):
+        if isinstance(samples, (list, torch.Tensor)):
+            samples = nested_tensor_from_tensor_list(samples)
+        features, pos = self.backbone(samples)
+
+        src, mask = features[-1].decompose()
+        assert mask is not None
+        hs = self.transformer(
+            self.input_proj(src), mask, self.query_embed.weight, pos[-1]
+        )[0]
+
+        outputs_class = self.class_embed(hs)
+        outputs_coord = self.bbox_embed(hs).sigmoid()
+        out = {"pred_logits": outputs_class[-1], "pred_boxes": outputs_coord[-1]}
+        if self.aux_loss:
+            out["aux"] = self._set_aux_loss(outputs_class, outputs_coord)
+        return out
 
 
 class DETR2n5d(DETR):
@@ -157,13 +177,68 @@ class DETR3d(DETR):
             self.input_proj(src), mask, self.query_embed.weight, pos[-1]
         )[0]
 
-        hs = F.adaptive_max_pool2d(hs, (2, hs.size(-1)))
+        return hs
+
+
+class DETR3d_V1(DETR3d):
+    def forward(self, samples: NestedTensor):
+        """The forward expects a NestedTensor, which consists of:
+           - samples.tensor: batched images, of shape [batch_size x 3 x H x W]
+           - samples.mask: a binary mask of shape [batch_size x H x W], containing 1 on padded pixels
+        It returns a dict with the following elements:
+           - "pred_logits": the classification logits (including no-object) for all queries.
+                            Shape= [batch_size x num_queries x (num_classes + 1)]
+           - "pred_boxes": The normalized boxes coordinates for all queries, represented as
+                           (center_x, center_y, height, width). These values are normalized in [0, 1],
+                           relative to the size of each individual image (disregarding possible padding).
+                           See PostProcess for information on how to retrieve the unnormalized bounding box.
+           - "aux_outputs": Optional, only returned when auxilary losses are activated. It is a list of
+                            dictionnaries containing the two above keys for each decoder layer.
+        """
+        hs = super().forward(samples)
 
         outputs_class = self.class_embed(hs)
         outputs_coord = self.bbox_embed(hs).sigmoid()
         out = {"pred_logits": outputs_class[-1], "pred_boxes": outputs_coord[-1]}
         if self.aux_loss:
-            out["aux_outputs"] = self._set_aux_loss(outputs_class, outputs_coord)
+            out["aux"] = self._set_aux_loss(outputs_class, outputs_coord)
+        return out
+
+
+class DETR3d_V2(DETR3d):
+
+    """
+    Average the queries
+    """
+
+    def forward(self, samples: NestedTensor):
+        """The forward expects a NestedTensor, which consists of:
+           - samples.tensor: batched images, of shape [batch_size x 3 x H x W]
+           - samples.mask: a binary mask of shape [batch_size x H x W], containing 1 on padded pixels
+        It returns a dict with the following elements:
+           - "pred_logits": the classification logits (including no-object) for all queries.
+                            Shape= [batch_size x num_queries x (num_classes + 1)]
+           - "pred_boxes": The normalized boxes coordinates for all queries, represented as
+                           (center_x, center_y, height, width). These values are normalized in [0, 1],
+                           relative to the size of each individual image (disregarding possible padding).
+                           See PostProcess for information on how to retrieve the unnormalized bounding box.
+           - "aux_outputs": Optional, only returned when auxilary losses are activated. It is a list of
+                            dictionnaries containing the two above keys for each decoder layer.
+        """
+        hs = super().forward(samples)
+
+        q = hs.size(-2) // 2
+
+        m1 = hs[..., :q, :].mean(dim=-2)
+        m2 = hs[..., q:, :].mean(dim=-2)
+
+        hs = torch.stack((m1, m2), dim=-2)
+
+        outputs_class = self.class_embed(hs)
+        outputs_coord = self.bbox_embed(hs).sigmoid()
+        out = {"pred_logits": outputs_class[-1], "pred_boxes": outputs_coord[-1]}
+        if self.aux_loss:
+            out["aux"] = self._set_aux_loss(outputs_class, outputs_coord)
         return out
 
 

@@ -300,11 +300,10 @@ class MOAKSDataset(DatasetBase):
         # see README.md
         if ann["side"] == "left":
             # assume by now input is a torch.Tensor[ch d h w]
+            # _, d, *_ = input.size()
 
-            _, d, *_ = input.size()
             input = input.flip(1)
-            z0, y0, x0, z1, y1, x1 = target["boxes"].flip(0).unbind(-1)
-            target["boxes"] = torch.stack((d - z1, y0, x0, d - z0, y1, x1), -1)
+            target["boxes"] = target["boxes"].flip(0)
 
         if self.transform is not None:
             input, target = self.transform(input, target)
@@ -492,7 +491,7 @@ def build(
             [
                 to_tensor,
                 center_crop,
-                RandomResizedBBoxSafeCrop(),
+                RandomResizedBBoxSafeCrop(p=1, bbox_safe=True),
                 resize,
                 normalize,
             ]
