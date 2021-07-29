@@ -86,9 +86,14 @@ class MixCriterion(nn.Module):
 
         loss = (1 - giou.diag()).mean()
 
+        return loss
+
+    @pick("boxes")
+    def loss_inter(self, out, tgt, **kwargs):
         # iou term that separates output boxes from each other
-        inter_iou = box_iou(out_xyxy[0::2, :], out_xyxy[1::2, :])
-        loss += inter_iou.diag().mean()
+        out_xyxy = box_cxcywh_to_xyxy(out.flatten(0, 1))
+        loss = box_iou(out_xyxy[0::2, :], out_xyxy[1::2, :]).diag()
+        loss = loss.mean()
 
         return loss
 

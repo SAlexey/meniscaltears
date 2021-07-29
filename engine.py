@@ -65,10 +65,10 @@ def evaluate(
                 total_loss += loss.detach().cpu().item()
 
                 losses.append({k: v.detach().cpu() for k, v in loss_dict.items()})
-            
+
             target = {k: v.detach().cpu() for k, v in target.items()}
-            output = {k: v.detach().cpu() for k, v in output.items()} 
-            
+            output = {k: v.detach().cpu() for k, v in output.items()}
+
             targets.append(target)
             outputs.append(output)
 
@@ -99,21 +99,23 @@ def evaluate(
 
         if name == "roc_auc_score":
             tgt, out = {}, {}
-            
-            # reduce labels to menisci first 
+
+            # reduce labels to menisci first
             tgt["labels"] = targets["labels"].max(-1).values
             out["labels"] = outputs["labels"].max(-1).values
 
             # compute roc auc scores for menisci
-            eval_results[f"menisci_{name}"] = metric(tgt, out, names=("lateral", "medial"))
+            eval_results[f"menisci_{name}"] = metric(
+                tgt, out, names=("lateral", "medial")
+            )
 
             # reduce labels further to anywhere
 
             tgt["labels"] = tgt["labels"].max(-1).values.unsqueeze(1)
             out["labels"] = out["labels"].max(-1).values.unsqueeze(1)
-            
+
             # compute roc auc for anywhere in the knee
-            eval_results[f"anywhere_{name}"] = metric(tgt, out, names=("knee", ))
+            eval_results[f"anywhere_{name}"] = metric(tgt, out, names=("knee",))
 
     return eval_results
 
@@ -135,7 +137,7 @@ def train(
     total_loss = 0
     total_time = 0
     total_steps = 0
-    
+
     meters = defaultdict(lambda: SmoothedValue(window=window))
 
     device = _get_model_device(model)
@@ -154,8 +156,13 @@ def train(
 
         if postprocess is not None:
             output = postprocess(output)
+            
+            if "aux" in output:
+                output["aux"] = [postprocess(o) for o in output["aux"]]
 
         loss_dict = criterion(output, target, **criterion_kwargs)
+        loss_dict_aux = loss_dict.pop("aux", dict())
+        
         loss = _reduce_loss_dict(loss_dict, criterion.weight)
 
         optimizer.zero_grad()
@@ -165,11 +172,19 @@ def train(
         step_time = time.time() - t0
 
         loss = loss.detach().cpu().item()
-        
+
         total_loss += loss
         meters["loss"] += loss
         for name, loss in loss_dict.items():
             meters[name] += loss.detach().cpu().item()
+
+        for l, ld in loss_dict_aux.items():
+
+            al = _reduce_loss_dict(ld, criterion.weight)
+            meters[f"aux_loss_{l}"] += al.detach().cpu().item()
+
+            for name, loss in ld.items():
+                meters[f"aux_{name}_{l}"] += loss.detach().cpu().item()
 
         if step and step % window == 0:
 
