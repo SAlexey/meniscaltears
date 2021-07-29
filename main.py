@@ -99,7 +99,7 @@ class Postprocess(nn.Module):
             output["labels"] = output.pop("pred_logits")
 
         if "pred_boxes" in output:
-            output["boxes"] = output.pop("pred_boxes").sigmoid()
+            output["boxes"] = output.pop("pred_boxes")
         return output
 
 
@@ -206,7 +206,7 @@ def main(args):
     logging.info(f"Running: {model}")
     metrics = {key: METRICS[key] for key in args.metrics}
 
-    postprocess = None  # Postprocess()
+    postprocess = Postprocess()
     # WARNING: NO SIGMOID IN POSTPROCESS FOR LABELS
     # THEY WILL BE ACTIVATED IN EVALIATION [enpgine.py]
     # AFTER BCEWithLogitsLoss HAS DONE ITS THING
