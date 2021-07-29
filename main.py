@@ -1,6 +1,6 @@
 #%%
 from functools import partial
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from pathlib import Path
 from typing import Dict
 import warnings
@@ -25,10 +25,16 @@ import torch
 import torch.nn.functional as F
 from hydra.utils import call, instantiate, to_absolute_path
 from torch import nn, hub
-from util.box_ops import box_cxcywh_to_xyxy, denormalize_boxes, generalized_box_iou
+from util.box_ops import (
+    box_cxcywh_to_xyxy,
+    box_iou,
+    denormalize_boxes,
+    generalized_box_iou,
+)
 from einops import rearrange
 import sys
 from util.xai import SmoothGradientSaliency
+from util.misc import SmoothedValue
 from torch.utils.data import DataLoader
 
 
@@ -73,10 +79,17 @@ class MixCriterion(nn.Module):
 
     @pick("boxes")
     def loss_giou(self, out, tgt, **kwargs):
+
         out_xyxy = box_cxcywh_to_xyxy(out.flatten(0, 1))
         tgt_xyxy = box_cxcywh_to_xyxy(tgt.flatten(0, 1))
         giou = generalized_box_iou(out_xyxy, tgt_xyxy)
+
         loss = (1 - giou.diag()).mean()
+
+        # iou term that separates output boxes from each other
+        inter_iou = box_iou(out_xyxy[0::2, :], out_xyxy[1::2, :])
+        loss += inter_iou.diag().mean()
+
         return loss
 
     def forward(
@@ -86,6 +99,14 @@ class MixCriterion(nn.Module):
             name: getattr(self, f"loss_{name}")(out, tgt, **kwargs)
             for name in self.weight
         }
+        if "aux" in out:
+            losses["aux"] = dict()
+            for i, o in enumerate(out["aux"]):
+                losses["aux"][i] = {
+                    name: getattr(self, f"loss_{name}")(o, tgt, **kwargs)
+                    for name in self.weight
+                }
+
         assert losses
         return losses
 
@@ -183,11 +204,13 @@ def main(args):
         },
     ]
 
-    optimizer = torch.optim.Adam(param_groups, lr=args.lr)
+    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9)
     scheduler = torch.optim.lr_scheduler.StepLR(
         optimizer, args.lr_drop_step, args.lr_drop_rate
     )
     epochs = args.num_epochs
+
+    losses = defaultdict(lambda: SmoothedValue(window=None))
 
     state = _load_state(args, model, optimizer, scheduler)
     start = state["start"]
@@ -295,6 +318,8 @@ def main(args):
         epoch_loss = train_results["total_loss"] / train_results["total_steps"]
         step_time = epoch_time / train_results["total_steps"]
 
+        losses["train"] += epoch_loss
+
         logging.info(
             f"epoch [{epoch:04d} / {epochs:04d}] | training loss [{epoch_loss:.4f}] | trainig time [{epoch_time:.2f} ({step_time:.3f})]"
         )
@@ -315,6 +340,8 @@ def main(args):
         epoch_time = eval_results["total_time"]
         epoch_loss = eval_results["total_loss"] / eval_results["total_steps"]
         step_time = epoch_time / eval_results["total_steps"]
+
+        losses["val"] += epoch_loss
 
         logging.info(
             f"epoch [{epoch:04d} / {epochs:04d}] | validation loss {epoch_loss:.4f} | inference time [{epoch_time:.2f} ({step_time:.3f})]"
@@ -397,6 +424,12 @@ def main(args):
                 "checkpoint.ckpt",
             )
             logging.info("Checkpoint Saved!")
+
+        for name, loss in losses.items():
+            plt.plot(loss.values, label=name)
+        plt.legend()
+        plt.savefig("epoch_loss.jpg")
+        plt.close()
 
     return best_val_loss
 
