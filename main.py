@@ -117,7 +117,16 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
             logging.warning("Model weights in checkpoint have been overwritten!")
 
     if "model" in state_dict:
-        model.load(state_dict["model"])
+
+        sd = OrderedDict(
+            {
+                k.replace("backbone.", "body."): v
+                for k, v in state_dict["model"].items()
+                if "backbone" in k
+            }
+        )
+
+        model.backbone[0].load_state_dict(sd)
 
     if "optimizer" in state_dict and optimizer is not None:
         optimizer.load_state_dict(state_dict["optimizer"])
