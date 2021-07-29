@@ -196,7 +196,7 @@ def main(args):
             "params": [
                 p
                 for n, p in model.named_parameters()
-                if "backbone" in n and p.requires_grad
+                if ("backbone" in n) and p.requires_grad
             ],
             "lr": args.lr_backbone,
         },
@@ -204,12 +204,12 @@ def main(args):
             "params": [
                 p
                 for n, p in model.named_parameters()
-                if "backbone" not in n and p.requires_grad
+                if ("backbone" not in n) and p.requires_grad
             ]
         },
     ]
 
-    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9)
+    optimizer = torch.optim.SGD(param_groups, lr=args.lr, momentum=0.9)
     scheduler = torch.optim.lr_scheduler.StepLR(
         optimizer, args.lr_drop_step, args.lr_drop_rate
     )
