@@ -23,13 +23,13 @@ weights:
   labels: 1
   boxes: 5
   giou: 2
-  inter: 0.7
+  inter: 1
 
-# TRAINING HPARAMS
-num_epochs: 500
+# TRAINING SETTINGS & HPARAMS
+num_epochs: 300
 batch_size: 4
 num_workers: 4
-lr: 0.0001 # default learning rate
+lr: 0.001 # default learning rate
 lr_backbone: 0.001 # cnn learning rate
 lr_drop_step: 50
 lr_drop_rate: 0.5

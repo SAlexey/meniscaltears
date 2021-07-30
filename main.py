@@ -147,16 +147,7 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
             logging.warning("Model weights in checkpoint have been overwritten!")
 
     if "model" in state_dict:
-
-        sd = OrderedDict(
-            {
-                k.replace("backbone.", "body."): v
-                for k, v in state_dict["model"].items()
-                if "backbone" in k
-            }
-        )
-
-        model.backbone[0].load_state_dict(sd)
+        model.load_state_dict(state_dict["model"])
 
     if "optimizer" in state_dict and optimizer is not None:
         optimizer.load_state_dict(state_dict["optimizer"])
@@ -223,6 +214,8 @@ def main(args):
     best_roc_auc = -np.inf
 
     names = ("LAH", "LB", "LPH", "MAH", "MB", "MPH")
+
+    inter_iou_epoch = []
 
     METRICS = {
         "balanced_accuracy": partial(balanced_accuracy_score, names=names),
@@ -435,6 +428,14 @@ def main(args):
         plt.legend()
         plt.savefig("epoch_loss.jpg")
         plt.close()
+
+        # boxes = box_cxcywh_to_xyxy(eval_results["outputs"]["boxes"].flatten(0, 1))
+        # ious = box_iou(boxes[0::2], boxes[1::2]).diag()
+        # inter_iou_epoch.append(ious)
+
+        # plt.violinplot(inter_iou_epoch)
+        # plt.savefig("inter_iou.jpg")
+        # plt.close()
 
     return best_val_loss
 

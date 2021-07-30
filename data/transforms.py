@@ -272,7 +272,7 @@ class RandomInvert(object):
 class AugSmoothTransform(object):
     def __init__(self, p=0.5):
         self.p = p
-        self.noise = torch.distributions.Normal(0.0, 0.1)
+        self.noise = torch.distributions.Normal(0.0, 0.2)
         self.transforms = [
             self.random_hflip,
             self.random_noise,

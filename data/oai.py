@@ -490,8 +490,9 @@ def build(
         train_transforms = Compose(
             [
                 to_tensor,
+                RandomResizedBBoxSafeCrop(p=0.5, bbox_safe=True),
+                AugSmoothTransform(p=0.5),
                 center_crop,
-                RandomResizedBBoxSafeCrop(p=1, bbox_safe=True),
                 resize,
                 normalize,
             ]
