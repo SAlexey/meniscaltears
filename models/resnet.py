@@ -211,6 +211,31 @@ def resnet50_3d(*, block=Bottleneck3D, norm_layer=nn.BatchNorm3d, **kwargs) -> R
     return ResNet3D(block, [3, 4, 6, 3], norm_layer=norm_layer, **kwargs)
 
 
+def wide_resnet50_3d(
+    *, block=Bottleneck3D, norm_layer=nn.BatchNorm3d, width_per_group=64 * 2, **kwargs
+) -> ResNet:
+    return ResNet3D(
+        block,
+        [3, 4, 6, 3],
+        norm_layer=norm_layer,
+        width_per_group=width_per_group,
+        **kwargs,
+    )
+
+
+def wide_resnet50_3d_v2(*args, **kwargs):
+    model = wide_resnet50_3d(*args, **kwargs)
+    model.layer4 = nn.Sequential(
+        nn.Conv3d(1024, 1024, 1),
+        nn.BatchNorm3d(1024),
+        nn.ReLU(True),
+        nn.Conv3d(1024, 2048, 1),
+        nn.BatchNorm3d(2048),
+        nn.ReLU(True),
+    )
+    return model
+
+
 def dilated_resnet26_3d(
     *, block=DilationBasic3D, norm_layer=nn.BatchNorm3d, **kwargs
 ) -> ResNet:

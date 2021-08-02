@@ -81,27 +81,7 @@ class DETR(nn.Module):
         ]
 
 
-class DETR2d(DETR):
-    def forward(self, samples: NestedTensor):
-        if isinstance(samples, (list, torch.Tensor)):
-            samples = nested_tensor_from_tensor_list(samples)
-        features, pos = self.backbone(samples)
-
-        src, mask = features[-1].decompose()
-        assert mask is not None
-        hs = self.transformer(
-            self.input_proj(src), mask, self.query_embed.weight, pos[-1]
-        )[0]
-
-        outputs_class = self.class_embed(hs)
-        outputs_coord = self.bbox_embed(hs).sigmoid()
-        out = {"pred_logits": outputs_class[-1], "pred_boxes": outputs_coord[-1]}
-        if self.aux_loss:
-            out["aux"] = self._set_aux_loss(outputs_class, outputs_coord)
-        return out
-
-
-class DETR2n5d(DETR):
+class DETR2p1d(DETR):
     def __init__(
         self, num_classes, num_queries, backbone=None, transformer=None, aux_loss=False
     ):

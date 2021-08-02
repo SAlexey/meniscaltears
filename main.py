@@ -215,8 +215,6 @@ def main(args):
 
     names = ("LAH", "LB", "LPH", "MAH", "MB", "MPH")
 
-    inter_iou_epoch = []
-
     METRICS = {
         "balanced_accuracy": partial(balanced_accuracy_score, names=names),
         "roc_curve": partial(roc_curve, names=names),
