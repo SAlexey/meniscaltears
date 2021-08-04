@@ -285,7 +285,8 @@ def dilated_resnet26_3d(
 class ResNet3D(nn.Module):
     def __init__(
         self,
-        block: BasicBlock,
+        stem: nn.Module,
+        block: nn.Module,
         layers: List[int],
         num_classes: int = 1000,
         zero_init_residual: bool = False,
@@ -314,7 +315,7 @@ class ResNet3D(nn.Module):
             )
         self.groups = groups
         self.base_width = width_per_group
-        self.stem = BasicStem3D()
+        self.stem = stem
         self.maxpool = nn.MaxPool3d(kernel_size=3, stride=2, padding=1)
         self.layer1 = self._make_layer(block, 64, layers[0])
         self.layer2 = self._make_layer(
