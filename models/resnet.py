@@ -15,6 +15,7 @@ from einops.layers.torch import Rearrange
 from .linear import MLP
 from omegaconf import DictConfig
 import os
+import copy
 
 
 def conv3x3x3(
@@ -43,31 +44,42 @@ def conv1x1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv3d:
     return nn.Conv3d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
 
 
-def basic_block():
-    return BasicBlock3D
+def stem(name):
+    CHOICES = {
+        "basic": models.video.resnet.BasicStem,
+        "2plus1d": models.video.resnet.R2Plus1dStem,
+    }
+    return CHOICES[name]
 
 
-def bottleneck():
-    return Bottleneck3D
+def block(name):
+    CHOICES = {
+        "basic": models.video.resnet.BasicBlock,
+        "bottleneck": models.video.resnet.Bottleneck,
+    }
+    return CHOICES[name]
 
 
-def conv3d_simple():
-    return models.video.resnet.Conv3DSimple
-
-
-def conv3d_notemporal():
-    return models.video.resnet.Conv3DNoTemporal
-
-
-def conv2p1d():
-    return models.video.resnet.Conv2Plus1D
+def conv(name):
+    CHOICES = {
+        "2plus1d": models.video.resnet.Conv2Plus1D,
+        "3d_simple": models.video.resnet.Conv3DSimple,
+        "3d_notemp": models.video.resnet.Conv3DNoTemporal,
+    }
+    return CHOICES[name]
 
 
 class BasicStem3D(nn.Sequential):
     """The default conv-batchnorm-relu stem"""
 
     def __init__(
-        self, in_channels, out_channels, kernel_size, stride, padding, bias=False
+        self,
+        in_channels=1,
+        out_channels=64,
+        kernel_size=7,
+        stride=2,
+        padding=3,
+        bias=False,
     ):
         super(BasicStem3D, self).__init__(
             nn.Conv3d(
@@ -79,6 +91,64 @@ class BasicStem3D(nn.Sequential):
                 bias=bias,
             ),
             nn.BatchNorm3d(out_channels),
+            nn.ReLU(inplace=True),
+        )
+
+
+class R2Plus1dStem(nn.Sequential):
+    """R(2+1)D stem is different than the default one as it uses separated 3D convolution"""
+
+    def __init__(
+        self,
+        in_channels=1,
+        kernel_size=(7, 3),
+        padding=(3, 1),
+        stride=(2, 1),
+        bias=False,
+    ):
+
+        if isinstance(kernel_size, int):
+            kernel_size = (kernel_size,) * 2
+
+        k0, k1 = kernel_size
+        k0 = (1,) + (k0,) * 2
+        k1 = (k1,) + (1,) * 2
+
+        if isinstance(padding, int):
+            padding = (padding,) * 2
+
+        p0, p1 = padding
+        p0 = (0,) + (p0,) * 2
+        p1 = (p1,) + (0,) * 2
+
+        if isinstance(stride, int):
+            stride = (stride,) * 2
+
+        s0, s1 = stride
+
+        s0 = (1,) + (s0,) * 2
+        s1 = (s1,) + (1,) * 2
+
+        super(R2Plus1dStem, self).__init__(
+            nn.Conv3d(
+                in_channels,
+                45,
+                kernel_size=k0,
+                stride=s0,
+                padding=p0,
+                bias=bias,
+            ),
+            nn.BatchNorm3d(45),
+            nn.ReLU(inplace=True),
+            nn.Conv3d(
+                45,
+                64,
+                kernel_size=k1,
+                stride=s1,
+                padding=p1,
+                bias=bias,
+            ),
+            nn.BatchNorm3d(64),
             nn.ReLU(inplace=True),
         )
 

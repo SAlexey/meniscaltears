@@ -474,21 +474,26 @@ def build(
     if isotrope:
         output_size = (320, 320, 320)
     else:
-        output_size = (160, 320, 320) if not tse else (44, 320, 320)
+        output_size = (44, 320, 320) if tse else (160, 320, 320)
 
     resize = Resize(output_size)
+    b_size, w_size = 11, 7
 
     if tse:
+        w_size, b_size = b_size, w_size
         normalize = Normalize(mean=(0.21637,), std=(0.18688,))
     else:
         normalize = Normalize(mean=(0.4945), std=(0.3782,))
 
-    transforms = Compose([to_tensor, center_crop, resize, normalize])
+    tophat = TopHatFilter(b_size, w_size)
+
+    transforms = Compose([tophat, to_tensor, center_crop, resize, normalize])
 
     if train:
 
         train_transforms = Compose(
             [
+                tophat,
                 to_tensor,
                 RandomResizedBBoxSafeCrop(p=0.5, bbox_safe=True),
                 AugSmoothTransform(p=0.5),

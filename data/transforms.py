@@ -10,6 +10,7 @@ import math
 import numpy as np
 from skimage.util import invert
 from torchvision.transforms import functional as TF
+from scipy import ndimage
 
 
 class Compose(T.Compose):
@@ -248,6 +249,18 @@ class CenterCropVolume(object):
         crop = (back, top, left, depth, height, width)
 
         return crop_volume(img, crop, tgt)
+
+
+class TopHatFilter(object):
+    def __init__(self, b_size, w_size):
+        self.bs = b_size
+        self.ws = w_size
+
+    def __call__(self, img, tgt=None):
+        bth = ndimage.black_tophat(img, size=self.bs)
+        wth = ndimage.white_tophat(img, size=self.ws)
+
+        return np.vstack((img, bth, wth)), tgt
 
 
 class Resize(object):

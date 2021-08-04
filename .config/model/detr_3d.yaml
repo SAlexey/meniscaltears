@@ -19,14 +19,27 @@ backbone:
   _target_: models.backbone.Joiner
   backbone:
     _target_: models.backbone.Backbone
-    num_channels: 2048
+    num_channels: 512
     backbone:
       _target_: torchvision.models._utils.IntermediateLayerGetter
       model:
-        _target_: models.resnet.ResNet3D
+        _target_: torchvision.models.video.resnet.VideoResNet
+        stem:
+          _target_: models.resnet.stem
+          name: 2plus1d
         block:
-          _target_: models.resnet.bottleneck
-        layers: [3, 4, 6, 3]
+          _target_: models.resnet.block
+          name: basic
+        layers: [2, 2, 2, 2]
+        conv_makers:
+          - _target_: models.resnet.conv
+            name: 2plus1d
+          - _target_: models.resnet.conv
+            name: 2plus1d
+          - _target_: models.resnet.conv
+            name: 2plus1d
+          - _target_: models.resnet.conv
+            name: 2plus1d
       return_layers:
         layer4: 0
 
