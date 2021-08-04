@@ -31,7 +31,11 @@ class DETR(nn.Module):
         super().__init__()
         self.num_queries = num_queries
         self.transformer = transformer
-        hidden_dim = transformer.d_model
+        hidden_dim = (
+            self.transformer.d_model
+            if self.transformer is not None
+            else backbone.num_channels
+        )
         self.class_embed = nn.Linear(hidden_dim, num_classes + 1)
         self.bbox_embed = MLP(hidden_dim, hidden_dim, 4, 3)
         self.query_embed = nn.Embedding(num_queries, hidden_dim)
@@ -138,12 +142,22 @@ class DETR3d(DETR):
             transformer=transformer,
             aux_loss=aux_loss,
         )
-        hidden_dim = self.transformer.d_model
+
+        num_channels = self.backbone.num_channels
+
+        if transformer is None:
+            hidden_dim = num_channels
+            num_classes = num_classes * 2
+            num_coordinates = 12
+            self.input_proj = nn.Identity()
+
+        else:
+            hidden_dim = transformer.d_model
+            num_coordinates = 6
+            self.input_proj = nn.Conv3d(num_channels, hidden_dim, kernel_size=1)
+
         self.class_embed = nn.Linear(hidden_dim, num_classes)
-        self.bbox_embed = MLP(hidden_dim, hidden_dim, 6, 3)
-        self.input_proj = nn.Conv3d(
-            self.backbone.num_channels, hidden_dim, kernel_size=1
-        )
+        self.bbox_embed = MLP(hidden_dim, hidden_dim, num_coordinates, 3)
 
     def forward(self, samples: NestedTensor):
         """The forward expects a NestedTensor, which consists of:
@@ -164,14 +178,12 @@ class DETR3d(DETR):
         features, pos = self.backbone(samples)
 
         src, mask = features[-1].decompose()
+        src = self.input_proj(src)
         assert mask is not None
         if self.transformer is not None:
-            hs = self.transformer(
-                self.input_proj(src), mask, self.query_embed.weight, pos[-1]
-            )[0]
-
+            hs = self.transformer(src, mask, self.query_embed.weight, pos[-1])[0]
         else:
-            hs = src[-1]
+            hs = src
 
         return hs
 
