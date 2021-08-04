@@ -3,6 +3,7 @@
 Backbone modules.
 """
 from collections import OrderedDict
+import math
 from models.resnet import resnet18_3d, resnet34_3d, resnet50_3d
 
 import torch
@@ -10,7 +11,7 @@ import torch.nn.functional as F
 import torchvision
 from torch import nn
 from torchvision.models._utils import IntermediateLayerGetter
-from typing import Dict, List
+from typing import Dict, List, Union
 
 from util.misc import NestedTensor
 from hydra.utils import call
@@ -83,13 +84,17 @@ class Backbone(nn.Module):
     """ResNet backbone with frozen BatchNorm."""
 
     def __init__(
-        self,
-        backbone: nn.Module,
-        num_channels: int,
+        self, backbone: nn.Module, num_channels: int, dim: Union[int, float] = 3
     ):
         super().__init__()
         self.body = backbone
         self.num_channels = num_channels
+        self.dim = float(dim)
+        assert self.dim in (
+            2.0,
+            2.5,
+            3.0,
+        ), f"dim ({dim}) must be one of (2.0, 2.5, 3.0)"
 
     def forward(self, tensor_list: NestedTensor):
         xs = self.body(tensor_list.tensors)
@@ -97,7 +102,8 @@ class Backbone(nn.Module):
         for name, x in xs.items():
             m = tensor_list.mask
             assert m is not None
-            mask = F.interpolate(m[None].float(), size=x.shape[-3:]).to(torch.bool)[0]
+            size = x.shape[-int(math.floor(self.dim)):]
+            mask = F.interpolate(m[None].float(), size=size).to(torch.bool)[0]
             out[name] = NestedTensor(x, mask)
         return out
 
@@ -108,13 +114,12 @@ class Joiner(nn.Sequential):
         self.num_channels = backbone.num_channels
 
     def forward(self, tensor_list: NestedTensor):
-        xs = self[0](tensor_list)
+        features, position = self
+        xs = features(tensor_list)
         out: List[NestedTensor] = []
-        pos = []
+        pos: List[torch.Tensor] = []
         for name, x in xs.items():
             out.append(x)
             # position encoding
-            pos.append(self[1](x).to(x.tensors.dtype))
+            pos.append(position(x).to(x.tensors.dtype))
         return out, pos
-
-

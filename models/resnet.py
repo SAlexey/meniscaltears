@@ -51,20 +51,34 @@ def bottleneck():
     return Bottleneck3D
 
 
+def conv3d_simple():
+    return models.video.resnet.Conv3DSimple
+
+
+def conv3d_notemporal():
+    return models.video.resnet.Conv3DNoTemporal
+
+
+def conv2p1d():
+    return models.video.resnet.Conv2Plus1D
+
+
 class BasicStem3D(nn.Sequential):
     """The default conv-batchnorm-relu stem"""
 
-    def __init__(self):
+    def __init__(
+        self, in_channels, out_channels, kernel_size, stride, padding, bias=False
+    ):
         super(BasicStem3D, self).__init__(
             nn.Conv3d(
-                1,
-                64,
-                kernel_size=(3, 7, 7),
-                stride=(1, 2, 2),
-                padding=(1, 3, 3),
-                bias=False,
+                in_channels,
+                out_channels,
+                kernel_size=kernel_size,
+                stride=stride,
+                padding=padding,
+                bias=bias,
             ),
-            nn.BatchNorm3d(64),
+            nn.BatchNorm3d(out_channels),
             nn.ReLU(inplace=True),
         )
 

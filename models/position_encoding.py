@@ -10,12 +10,7 @@ from util.misc import NestedTensor
 import numpy as np
 
 
-class PositionEmbeddingSine2d(nn.Module):
-    """
-    This is a more standard version of the position embedding, very similar to the one
-    used by the Attention is all you need paper, generalized to work on images.
-    """
-
+class PositionEmbeddingSine1d(nn.Module):
     def __init__(
         self, num_pos_feats=64, temperature=10000, normalize=False, scale=None
     ):
@@ -29,13 +24,39 @@ class PositionEmbeddingSine2d(nn.Module):
             scale = 2 * math.pi
         self.scale = scale
 
+    def forward(self, tensor_list: NestedTensor, dim: int = -1):
+
+        x = tensor_list.tensors
+        emb = torch.ones(x.size(dim))
+        emb = emb.cumsum(dtype=torch.float32)
+
+        if self.normalize:
+            eps = 1e-6
+            emb = emb / (emb + eps) * self.scale
+
+        dim_t = torch.arange(self.num_pos_feats, dtype=torch.float32, device=x.device)
+        dim_t = self.temperature ** (2 * (dim_t // 2) / self.num_pos_feats)
+
+        pos = emb[None] / dim_t
+        pos = torch.stack((pos[:, 0::2].sin(), pos[:, 1::2].cos()), dim=-1).flatten(-2)
+
+        
+        return pos
+
+
+class PositionEmbeddingSine2d(PositionEmbeddingSine1d):
+    """
+    This is a more standard version of the position embedding, very similar to the one
+    used by the Attention is all you need paper, generalized to work on images.
+    """
+
     def forward(self, tensor_list: NestedTensor):
         x = tensor_list.tensors
         mask = tensor_list.mask
         assert mask is not None
         not_mask = ~mask
-        y_embed = not_mask.cumsum(1, dtype=torch.float32)
-        x_embed = not_mask.cumsum(2, dtype=torch.float32)
+        y_embed = not_mask.cumsum(-2, dtype=torch.float32)
+        x_embed = not_mask.cumsum(-1, dtype=torch.float32)
         if self.normalize:
             eps = 1e-6
             y_embed = y_embed / (y_embed[:, -1:, :] + eps) * self.scale
@@ -56,24 +77,25 @@ class PositionEmbeddingSine2d(nn.Module):
         return pos
 
 
-class PositionEmbeddingSine3d(nn.Module):
+class PositionEmbeddingSine2p1d(PositionEmbeddingSine2d):
+    def forward(self, tensor_list: NestedTensor):
+        pos = super().forward(tensor_list)
+        mask = tensor_list.mask
+        not_mask = ~mask
+
+        # batch position
+        z_embed = not_mask.cumsum(0, dtype=torch.float32)
+
+        if self.normalize:
+            eps = 1e-6
+            z_embed = z_embed / (z_embed[:, -1:, :] + eps) * self.scale
+
+
+class PositionEmbeddingSine3d(PositionEmbeddingSine2d):
     """
     This is a more standard version of the position embedding, very similar to the one
     used by the Attention is all you need paper, generalized to work on images.
     """
-
-    def __init__(
-        self, num_pos_feats=64, temperature=10000, normalize=False, scale=None
-    ):
-        super().__init__()
-        self.num_pos_feats = num_pos_feats
-        self.temperature = temperature
-        self.normalize = normalize
-        if scale is not None and normalize is False:
-            raise ValueError("normalize should be True if scale is passed")
-        if scale is None:
-            scale = 2 * math.pi
-        self.scale = scale
 
     def forward(self, tensor_list: NestedTensor):
         x = tensor_list.tensors

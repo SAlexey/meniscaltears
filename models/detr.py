@@ -81,7 +81,7 @@ class DETR(nn.Module):
         ]
 
 
-class DETR2p1d(DETR):
+class DETR2p1d_Conv(DETR):
     def __init__(
         self, num_classes, num_queries, backbone=None, transformer=None, aux_loss=False
     ):
@@ -104,6 +104,13 @@ class DETR2p1d(DETR):
         self.batch_proj = nn.Conv2d(
             self.backbone.num_channels, self.transformer.d_model, kernel_size=1
         )
+
+
+class DETR2p1d_Pos(DETR):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.batch_pos = None
 
 
 class DETR3d(DETR):
