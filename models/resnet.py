@@ -43,6 +43,14 @@ def conv1x1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv3d:
     return nn.Conv3d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
 
 
+def basic_block():
+    return BasicBlock3D
+
+
+def bottleneck():
+    return Bottleneck3D
+
+
 class BasicStem3D(nn.Sequential):
     """The default conv-batchnorm-relu stem"""
 
@@ -211,7 +219,7 @@ def resnet50_3d(*, block=Bottleneck3D, norm_layer=nn.BatchNorm3d, **kwargs) -> R
     return ResNet3D(block, [3, 4, 6, 3], norm_layer=norm_layer, **kwargs)
 
 
-def resnet50_3d_vs(*args, **kwargs):
+def resnet50_3d_v2(*args, **kwargs):
     model = resnet50_3d(*args, **kwargs)
     model.layer4 = nn.Sequential(
         nn.Conv3d(1024, 1024, 1),
@@ -389,6 +397,30 @@ class ResNet3D(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         return self._forward_impl(x)
+
+
+class RNet(ResNet3D):
+    def __init__(self, block, *args, **kwargs):
+        super().__init__(block, *args, **kwargs)
+        self.layer4 = nn.Sequential(
+            nn.Conv3d(
+                self.inplanes // block.expansion // 2,
+                self.inplanes // block.expansion,
+                kernel_size=1,
+            ),
+            nn.BatchNorm3d(self.inplanes // block.expansion),
+            nn.ReLU(True),
+            nn.Conv3d(
+                self.inplanes // block.expansion,
+                self.inplanes // block.expansion,
+                kernel_size=1,
+            ),
+            nn.BatchNorm3d(self.inplanes // block.expansion),
+            nn.ReLU(True),
+            nn.Conv3d(self.inplanes // block.expansion, self.inplanes, kernel_size=1),
+            nn.BatchNorm3d(self.inplanes),
+            nn.ReLU(True),
+        )
 
 
 class DilationResNet3D(nn.Module):

@@ -19,11 +19,14 @@ backbone:
   _target_: models.backbone.Joiner
   backbone:
     _target_: models.backbone.Backbone
-    num_channels: 2048
+    num_channels: 512
     backbone:
       _target_: torchvision.models._utils.IntermediateLayerGetter
       model:
-        _target_: models.resnet.resnet50_3d
+        _target_: models.resnet.RNet
+        block:
+          _target_: models.resnet.basic_block
+        layers: [3, 4, 6, 1]
       return_layers:
         layer4: 0
 
