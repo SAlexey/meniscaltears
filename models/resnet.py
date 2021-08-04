@@ -54,8 +54,10 @@ def stem(name):
 
 def block(name):
     CHOICES = {
-        "basic": models.video.resnet.BasicBlock,
-        "bottleneck": models.video.resnet.Bottleneck,
+        "basic_res": BasicBlock3D,
+        "basic_vid": models.video.resnet.BasicBlock,
+        "bottleneck_res": Bottleneck3D,
+        "bottleneck_vid": models.video.resnet.Bottleneck,
     }
     return CHOICES[name]
 
@@ -300,7 +302,8 @@ def resnet34_3d(*, block=BasicBlock3D, norm_layer=nn.BatchNorm3d, **kwargs) -> R
 
 
 def resnet50_3d(*, block=Bottleneck3D, norm_layer=nn.BatchNorm3d, **kwargs) -> ResNet:
-    return ResNet3D(block, [3, 4, 6, 3], norm_layer=norm_layer, **kwargs)
+    stem = BasicStem3D(3)
+    return ResNet3D(stem, block, [3, 4, 6, 3], norm_layer=norm_layer, **kwargs)
 
 
 def resnet50_3d_v2(*args, **kwargs):
@@ -322,7 +325,10 @@ def resnet50_3d_v2(*args, **kwargs):
 def wide_resnet50_3d(
     *, block=Bottleneck3D, norm_layer=nn.BatchNorm3d, width_per_group=64 * 2, **kwargs
 ) -> ResNet:
+
+    stem = BasicStem3D(3)
     return ResNet3D(
+        stem,
         block,
         [3, 4, 6, 3],
         norm_layer=norm_layer,
