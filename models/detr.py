@@ -150,6 +150,7 @@ class DETR3d(DETR):
             num_classes = num_classes * 2
             num_coordinates = 12
             self.input_proj = nn.Identity()
+            del self.query_embed
 
         else:
             hidden_dim = transformer.d_model
@@ -175,12 +176,15 @@ class DETR3d(DETR):
         """
         if isinstance(samples, (list, torch.Tensor)):
             samples = nested_tensor_from_tensor_list(samples)
-        features, pos = self.backbone(samples)
+
+        use_attention = self.transformer is not None
+
+        features, pos = self.backbone(samples, get_position=use_attention)
 
         src, mask = features[-1].decompose()
         src = self.input_proj(src)
         assert mask is not None
-        if self.transformer is not None:
+        if use_attention:
             hs = self.transformer(src, mask, self.query_embed.weight, pos[-1])[0]
         else:
             hs = src

@@ -7,6 +7,9 @@ device: cuda
 checkpoint: false # path to the checkpoint
 state_dict: false
 
+model:
+  transformer: null
+
 # TESTING
 eval: false # only run evaluation (uses test set)
 cam: true # run grad cam for menisci (ignored if eval is false)
@@ -27,7 +30,7 @@ weights:
 
 # TRAINING SETTINGS & HPARAMS
 num_epochs: 300
-batch_size: 4
+batch_size: 1
 num_workers: 4
 lr: 0.0001 # default learning rate
 lr_backbone: 0.0005 # cnn learning rate

@@ -214,7 +214,7 @@ def main(args):
         },
     ]
 
-    optimizer = torch.optim.SGD(param_groups, lr=args.lr, momentum=0.9)
+    optimizer = torch.optim.Adam(param_groups, lr=args.lr)
     scheduler = torch.optim.lr_scheduler.StepLR(
         optimizer, args.lr_drop_step, args.lr_drop_rate
     )

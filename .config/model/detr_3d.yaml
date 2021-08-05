@@ -22,26 +22,27 @@ backbone:
     num_channels: 512
     backbone:
       _target_: torchvision.models._utils.IntermediateLayerGetter
+      return_layers:
+        layer4: 0
       model:
+        # _target_: models.resnet.ResNet3D
         _target_: torchvision.models.video.resnet.VideoResNet
         stem:
           _target_: models.resnet.stem
-          name: 2plus1d
+          name: basic
         block:
           _target_: models.resnet.block
           name: basic
-        layers: [2, 2, 2, 2]
+        layers: [3, 4, 6, 3]
         conv_makers:
           - _target_: models.resnet.conv
-            name: 2plus1d
+            name: 3d_simple
           - _target_: models.resnet.conv
-            name: 2plus1d
+            name: 3d_simple
           - _target_: models.resnet.conv
-            name: 2plus1d
+            name: 3d_simple
           - _target_: models.resnet.conv
-            name: 2plus1d
-      return_layers:
-        layer4: 0
+            name: 3d_simple
 
   position_embedding:
     _target_: models.position_encoding.PositionEmbeddingSine3d
