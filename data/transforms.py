@@ -260,6 +260,9 @@ class TopHatFilter(object):
         bth = ndimage.black_tophat(img, size=self.bs)
         wth = ndimage.white_tophat(img, size=self.ws)
 
+        bth = torch.from_numpy(bth)
+        wth = torch.from_numpy(wth)
+
         return torch.stack((img, bth, wth)), tgt
 
 
