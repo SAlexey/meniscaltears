@@ -96,14 +96,18 @@ class Backbone(nn.Module):
             3.0,
         ), f"dim ({dim}) must be one of (2.0, 2.5, 3.0)"
 
-    def forward(self, tensor_list: NestedTensor):
+    def forward(self, tensor_list: NestedTensor, attention=True):
         xs = self.body(tensor_list.tensors)
         out: Dict[str, NestedTensor] = {}
         for name, x in xs.items():
-            m = tensor_list.mask
-            assert m is not None
-            size = x.shape[-int(math.floor(self.dim)) :]
-            mask = F.interpolate(m[None].float(), size=size).to(torch.bool)[0]
+
+            if attention:
+                m = tensor_list.mask
+                assert m is not None
+                size = x.shape[-int(math.floor(self.dim)) :]
+                mask = F.interpolate(m[None].float(), size=size).to(torch.bool)[0]
+            else:
+                mask = None
             out[name] = NestedTensor(x, mask)
         return out
 
@@ -113,14 +117,14 @@ class Joiner(nn.Sequential):
         super().__init__(backbone, position_embedding)
         self.num_channels = backbone.num_channels
 
-    def forward(self, tensor_list: NestedTensor, get_position: bool = True):
+    def forward(self, tensor_list: NestedTensor, attention: bool = True):
         features, position = self
-        xs = features(tensor_list)
+        xs = features(tensor_list, attention)
         out: List[NestedTensor] = []
         pos: List[torch.Tensor] = []
         for name, x in xs.items():
             out.append(x)
             # position encoding
-            if get_position:
+            if attention:
                 pos.append(position(x).to(x.tensors.dtype))
         return out, pos

@@ -263,7 +263,7 @@ class TopHatFilter(object):
         bth = torch.from_numpy(bth)
         wth = torch.from_numpy(wth)
 
-        return torch.stack((img, bth, wth)), tgt
+        return torch.cat((img, bth, wth)), tgt
 
 
 class Resize(object):

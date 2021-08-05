@@ -46,6 +46,7 @@ def conv1x1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv3d:
 
 def stem(name):
     CHOICES = {
+        "basic_res": BasicStem3D,
         "basic": models.video.resnet.BasicStem,
         "2plus1d": models.video.resnet.R2Plus1dStem,
     }
@@ -55,7 +56,7 @@ def stem(name):
 def block(name):
     CHOICES = {
         "basic_res": BasicBlock3D,
-        "basic_vid": models.video.resnet.BasicBlock,
+        "basic": models.video.resnet.BasicBlock,
         "bottleneck_res": Bottleneck3D,
         "bottleneck_vid": models.video.resnet.Bottleneck,
     }
@@ -76,7 +77,7 @@ class BasicStem3D(nn.Sequential):
 
     def __init__(
         self,
-        in_channels=1,
+        in_channels=3,
         out_channels=64,
         kernel_size=7,
         stride=2,
