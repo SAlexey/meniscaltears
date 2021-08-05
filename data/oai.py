@@ -481,25 +481,25 @@ def build(
 
     if tse:
         w_size, b_size = b_size, w_size
-        normalize = Normalize(mean=(0.21637,) * 3, std=(0.18688,) * 3)
+        normalize = Normalize(mean=(0.21637,), std=(0.18688,))
     else:
-        normalize = Normalize(mean=(0.4945,) * 3, std=(0.3782,) * 3)
+        normalize = Normalize(mean=(0.4945,), std=(0.3782,))
 
     tophat = TopHatFilter(b_size, w_size)
 
-    transforms = Compose([tophat, to_tensor, center_crop, resize, normalize])
+    transforms = Compose([to_tensor, center_crop, resize, normalize, tophat])
 
     if train:
 
         train_transforms = Compose(
             [
-                tophat,
                 to_tensor,
                 RandomResizedBBoxSafeCrop(p=0.5, bbox_safe=True),
                 AugSmoothTransform(p=0.5),
                 center_crop,
                 resize,
                 normalize,
+                tophat,
             ]
         )
 
