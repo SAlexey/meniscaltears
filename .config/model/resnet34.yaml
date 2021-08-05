@@ -1,11 +1,29 @@
-_target_: models.resnet.DetNet3D
-backbone: resnet34_3d
-dropout: 0.5
-cls_output_dim: 6 
-cls_hidden_dim: 512
-cls_num_layers: 3 
-cls_dropout: 0.1 
-det_output_dim: 12 
-det_hidden_dim: 512 
-det_num_layers: 3 
-det_dropout: 0.1 
+_target_: models.detr.DETR3d_V1
+num_classes: 6
+num_queries: 2
+aux_loss: false
+transformer: null
+
+backbone:
+  _target_: models.backbone.Joiner
+  backbone:
+    _target_: models.backbone.Backbone
+    num_channels: 512
+    backbone:
+      _target_: torchvision.models._utils.IntermediateLayerGetter
+      return_layers:
+        layer4: 0
+      model:
+        _target_: models.resnet.ResNet3D
+        stem:
+          _target_: models.resnet.stem
+          name: basic_res
+        block:
+          _target_: models.resnet.block
+          name: basic_res
+        layers: [3, 4, 6, 3]
+
+  position_embedding:
+    _target_: models.position_encoding.PositionEmbeddingSine3d
+    num_pos_feats: 88 #d_model // 3
+    normalize: True

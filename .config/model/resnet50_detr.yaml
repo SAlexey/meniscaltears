@@ -1,14 +1,25 @@
 _target_: models.detr.DETR3d_V1
-num_classes: 6
+num_classes: 2
 num_queries: 2
 aux_loss: false
-transformer: null
+transformer:
+  _target_: models.transformer.Transformer
+  nhead: 8
+  activation: "relu"
+  num_encoder_layers: 6
+  num_decoder_layers: 6
+  dim_feedforward: 2048
+  # 264, 288, 312, 336, 360, 384, 408, 432, 456, 480, 504, 528, 552, 576, 600, 624, 648, 672, 696, 720, 744, 768, 792, 816, 840, 864, 888, 912, 936, 960, 984, 1008
+  d_model: 264 # divisible by 2 (pos enc. 2d); 3 (pos.enc 3d) and 8 (num heads)
+  dropout: 0.1
+  normalize_before: false
+  return_intermediate_dec: false
 
 backbone:
   _target_: models.backbone.Joiner
   backbone:
     _target_: models.backbone.Backbone
-    num_channels: 512
+    num_channels: 2048
     backbone:
       _target_: torchvision.models._utils.IntermediateLayerGetter
       return_layers:
@@ -20,8 +31,8 @@ backbone:
           name: basic_res
         block:
           _target_: models.resnet.block
-          name: basic_res
-        layers: [2, 2, 2, 2]
+          name: bottleneck_res
+        layers: [3, 4, 6, 3]
 
   position_embedding:
     _target_: models.position_encoding.PositionEmbeddingSine3d
