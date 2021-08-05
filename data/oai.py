@@ -219,8 +219,7 @@ class MOAKSDataset(DatasetBase):
         root,
         anns,
         *args,
-        binary=True,
-        multilabel=True,
+        labelling: str = "region-tear",
         transforms=None,
         **kwargs,
     ):
@@ -233,7 +232,19 @@ class MOAKSDataset(DatasetBase):
         self.transform = transforms
         self.anns = []
         self.targets = []
-        self.pos_weight = 0 if binary else None
+        self.labelling = labelling
+        # FIXME: position labels for different annotation types!
+        self.pos_weight = None
+
+        assert labelling in {
+            "region-tear",
+            "region-anomaly",
+            "region-moaks",
+            "meniscus-tear",
+            " meniscus-anomaly",
+            "global-tear",
+            "global-anomaly",
+        }
 
         for ann in anns:
 
@@ -245,28 +256,32 @@ class MOAKSDataset(DatasetBase):
                 "patient_id": torch.as_tensor(ann.get("patient_id", 0), dtype=int),
             }
 
-            if multilabel:
-                labels = [
-                    [
-                        ann.get("V00MMTLA", 0.0),
-                        ann.get("V00MMTLB", 0.0),
-                        ann.get("V00MMTLP", 0.0),
-                    ],
-                    [
-                        ann.get("V00MMTMA", 0.0),
-                        ann.get("V00MMTMB", 0.0),
-                        ann.get("V00MMTMP", 0.0),
-                    ],
-                ]
-            else:
-                labels = [[ann.get("LAT", 0.0)], [ann.get("MED", 0.0)]]
+            labels = [
+                [
+                    ann.get("V00MMTLA", 0.0),
+                    ann.get("V00MMTLB", 0.0),
+                    ann.get("V00MMTLP", 0.0),
+                ],
+                [
+                    ann.get("V00MMTMA", 0.0),
+                    ann.get("V00MMTMB", 0.0),
+                    ann.get("V00MMTMP", 0.0),
+                ],
+            ]
 
             labels = torch.from_numpy(np.nan_to_num(np.asarray(labels).astype(float)))
 
-            if binary:
-                if multilabel:
-                    labels = (labels > 1).float()
-                self.pos_weight += labels
+            resolution, detection = labelling.split("-")
+
+            if resolution == "meniscus":
+                labels = labels.max(-1, keepdim=True).values
+            elif resolution == "global":
+                labels = labels.max().unsqueeze(0)
+
+            if detection == "tear":
+                labels = (labels > 1).int()
+            elif detection == "anomaly":
+                labels = (labels >= 1).int()
 
             target["labels"] = labels
             target["boxes"] = torch.as_tensor(ann.get("boxes"))
