@@ -234,14 +234,14 @@ class MOAKSDataset(DatasetBase):
         self.targets = []
         self.labelling = labelling
         # FIXME: position labels for different annotation types!
-        self.pos_weight = None
+        self.pos_weight = None if labelling.endswith("moaks") else 0
 
         assert labelling in {
             "region-tear",
             "region-anomaly",
             "region-moaks",
             "meniscus-tear",
-            " meniscus-anomaly",
+            "meniscus-anomaly",
             "global-tear",
             "global-anomaly",
         }
@@ -279,9 +279,12 @@ class MOAKSDataset(DatasetBase):
                 labels = labels.max().unsqueeze(0)
 
             if detection == "tear":
-                labels = (labels > 1).int()
+                labels = (labels > 1).float()
             elif detection == "anomaly":
-                labels = (labels >= 1).int()
+                labels = (labels >= 1).float()
+
+            if self.pos_weight is not None:
+                self.pos_weight += labels
 
             target["labels"] = labels
             target["boxes"] = torch.as_tensor(ann.get("boxes"))
@@ -458,8 +461,7 @@ class MixDataset(Dataset):
 def build(
     data_dir,
     anns_dir,
-    binary=True,
-    multilabel=True,
+    labelling,
     limit_train_items=False,
     limit_val_items=False,
     limit_test_items=False,
@@ -521,8 +523,7 @@ def build(
         dataset_train = MOAKSDataset(
             data_dir,
             anns_dir / "train.json",
-            binary=binary,
-            multilabel=multilabel,
+            labelling=labelling,
             transforms=train_transforms,
         )
 
@@ -532,8 +533,7 @@ def build(
         dataset_val = MOAKSDataset(
             data_dir,
             anns_dir / "val.json",
-            binary=binary,
-            multilabel=multilabel,
+            labelling=labelling,
             transforms=transforms,
         )
 
@@ -547,8 +547,7 @@ def build(
         dataset_test = MOAKSDataset(
             data_dir,
             anns_dir / "test.json",
-            binary=binary,
-            multilabel=multilabel,
+            labelling=labelling,
             transforms=transforms,
         )
 

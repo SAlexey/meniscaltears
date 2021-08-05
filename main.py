@@ -31,7 +31,7 @@ from util.box_ops import (
     denormalize_boxes,
     generalized_box_iou,
 )
-from einops import rearrange
+from einops import rearrange, parse_shape
 import sys
 from util.xai import SmoothGradientSaliency
 from util.misc import SmoothedValue
@@ -120,12 +120,36 @@ class MixCriterion(nn.Module):
 # THEY WILL BE ACTIVATED IN EVALIATION [enpgine.py]
 # AFTER BCEWithLogitsLoss HAS DONE ITS THING
 class Postprocess(nn.Module):
-    def forward(self, output: Dict[str, torch.Tensor]):
+    def __init__(self, cfg):
+        super().__init__()
+        self.attention = cfg.model.transformer is not None
+        res, _ = cfg.data.labelling.split("-")
+
+        self.labels = "obj cls" if res in ("region", "meniscus") else "cls"
+
+    def forward(
+        self, output: Dict[str, torch.Tensor], target: Dict[str, torch.Tensor], **kwargs
+    ):
         if "pred_logits" in output:
-            output["labels"] = output.pop("pred_logits")
+            labels = output["pred_logits"]
+        else:
+            labels = output["labels"]
 
         if "pred_boxes" in output:
-            output["boxes"] = output.pop("pred_boxes")
+            boxes = output["pred_boxes"]
+        else:
+            boxes = output["boxes"]
+
+        if not self.attention:
+            shape = parse_shape(target["labels"], f"bs {self.labels}")
+            labels = rearrange(
+                labels, f"bs ({self.labels}) -> bs {self.labels}", **shape
+            )
+            boxes = rearrange(boxes, "bs (obj box) -> bs obj box", box=6)
+
+        output["labels"] = labels
+        output["boxes"] = boxes
+
         return output
 
 
@@ -144,17 +168,15 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
         sd = torch.load(state_dict_path, map_location=device)
 
         remap_keys = {
-
-            "backbone.0.body.conv1.weight": "backbone.0.body.stem.0.weight", 
-            "backbone.0.body.bn1.weight": "backbone.0.body.stem.1.weight", 
-            "backbone.0.body.bn1.bias": "backbone.0.body.stem.1.bias", 
+            "backbone.0.body.conv1.weight": "backbone.0.body.stem.0.weight",
+            "backbone.0.body.bn1.weight": "backbone.0.body.stem.1.weight",
+            "backbone.0.body.bn1.bias": "backbone.0.body.stem.1.bias",
             "backbone.0.body.bn1.running_mean": "backbone.0.body.stem.1.running_mean",
             "backbone.0.body.bn1.running_var": "backbone.0.body.stem.1.running_var",
-            "backbone.0.body.bn1.num_batches_tracked": "backbone.0.body.stem.1.num_batches_tracked"
-                }
+            "backbone.0.body.bn1.num_batches_tracked": "backbone.0.body.stem.1.num_batches_tracked",
+        }
 
-
-        sd = {remap_keys.get(k, k): v for k,v in sd.items()}
+        sd = {remap_keys.get(k, k): v for k, v in sd.items()}
         state_dict["model"] = sd
         logging.info(f"Loaded model weights from {state_dict_path}")
         if args.checkpoint:
@@ -239,7 +261,7 @@ def main(args):
     logging.info(f"Running: {model}")
     metrics = {key: METRICS[key] for key in args.metrics}
 
-    postprocess = Postprocess()
+    postprocess = Postprocess(args)
     # WARNING: NO SIGMOID IN POSTPROCESS FOR LABELS
     # THEY WILL BE ACTIVATED IN EVALIATION [enpgine.py]
     # AFTER BCEWithLogitsLoss HAS DONE ITS THING

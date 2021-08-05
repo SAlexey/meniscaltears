@@ -147,7 +147,7 @@ class DETR3d(DETR):
 
         if transformer is None:
             hidden_dim = num_channels
-            num_classes = num_classes * 2
+            num_classes = num_classes
             num_coordinates = 12
             self.input_proj = nn.Identity()
             del self.query_embed
@@ -186,12 +186,12 @@ class DETR3d(DETR):
         src = self.input_proj(src)
         if use_attention:
             assert mask is not None
-            hs = self.transformer(src, mask, self.query_embed.weight, pos[-1])[0]
+            src = self.transformer(src, mask, self.query_embed.weight, pos[-1])[0]
         else:
             bs = src.size(0)
-            hs = F.adaptive_avg_pool3d(src, 1).view(bs, -1)
+            src = F.adaptive_avg_pool3d(src, 1).view(bs, -1)
 
-        return hs
+        return src
 
 
 class DETR3d_V1(DETR3d):
@@ -213,9 +213,14 @@ class DETR3d_V1(DETR3d):
 
         outputs_class = self.class_embed(hs)
         outputs_coord = self.bbox_embed(hs).sigmoid()
-        out = {"pred_logits": outputs_class[-1], "pred_boxes": outputs_coord[-1]}
-        if self.aux_loss:
-            out["aux"] = self._set_aux_loss(outputs_class, outputs_coord)
+
+        if self.transformer is not None:
+            out = {"pred_logits": outputs_class[-1], "pred_boxes": outputs_coord[-1]}
+            if self.aux_loss:
+                out["aux"] = self._set_aux_loss(outputs_class, outputs_coord)
+        else: 
+            out = {"pred_logits": outputs_class, "pred_boxes": outputs_coord}
+        
         return out
 
 

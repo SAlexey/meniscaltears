@@ -20,7 +20,6 @@ def evaluate(
     criterion=None,
     criterion_kwargs=dict(),
     postprocess=None,
-    postprocess_kwargs=dict(),
     progress=False,
     metrics_kwargs=dict(),
     **metrics,
@@ -54,7 +53,7 @@ def evaluate(
             total_steps += 1
 
             if postprocess is not None:
-                output = postprocess(output, **postprocess_kwargs)
+                output = postprocess(output, target)
 
             if criterion is not None:
                 target = {k: v.to(device) for k, v in target.items()}
@@ -155,14 +154,14 @@ def train(
         output = model(input)
 
         if postprocess is not None:
-            output = postprocess(output)
-            
+            output = postprocess(output, target)
+
             if "aux" in output:
-                output["aux"] = [postprocess(o) for o in output["aux"]]
+                output["aux"] = [postprocess(o, target) for o in output["aux"]]
 
         loss_dict = criterion(output, target, **criterion_kwargs)
         loss_dict_aux = loss_dict.pop("aux", dict())
-        
+
         loss = _reduce_loss_dict(loss_dict, criterion.weight)
 
         optimizer.zero_grad()

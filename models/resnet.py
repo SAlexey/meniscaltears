@@ -56,7 +56,7 @@ def stem(name):
 def block(name):
     CHOICES = {
         "basic_res": BasicBlock3D,
-        "basic": models.video.resnet.BasicBlock,
+        "basic_vid": models.video.resnet.BasicBlock,
         "bottleneck_res": Bottleneck3D,
         "bottleneck_vid": models.video.resnet.Bottleneck,
     }
@@ -79,9 +79,9 @@ class BasicStem3D(nn.Sequential):
         self,
         in_channels=3,
         out_channels=64,
-        kernel_size=7,
-        stride=2,
-        padding=3,
+        kernel_size=(3, 7, 7),
+        stride=(1, 2, 2),
+        padding=(1, 3, 3),
         bias=False,
     ):
         super(BasicStem3D, self).__init__(
@@ -392,7 +392,7 @@ class ResNet3D(nn.Module):
             )
         self.groups = groups
         self.base_width = width_per_group
-        self.stem = stem
+        self.stem = stem()
         self.maxpool = nn.MaxPool3d(kernel_size=3, stride=2, padding=1)
         self.layer1 = self._make_layer(block, 64, layers[0])
         self.layer2 = self._make_layer(
