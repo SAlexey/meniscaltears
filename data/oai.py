@@ -481,9 +481,9 @@ def build(
 
     if tse:
         w_size, b_size = b_size, w_size
-        normalize = Normalize(mean=(0.21637,), std=(0.18688,))
+        normalize = Normalize(mean=(0.21637,) * 3, std=(0.18688,) * 3)
     else:
-        normalize = Normalize(mean=(0.4945), std=(0.3782,))
+        normalize = Normalize(mean=(0.4945,) * 3, std=(0.3782,) * 3)
 
     tophat = TopHatFilter(b_size, w_size)
 
