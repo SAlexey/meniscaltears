@@ -166,17 +166,6 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
     if args.state_dict:
         state_dict_path = to_absolute_path(args.state_dict)
         sd = torch.load(state_dict_path, map_location=device)
-
-        remap_keys = {
-            "backbone.0.body.conv1.weight": "backbone.0.body.stem.0.weight",
-            "backbone.0.body.bn1.weight": "backbone.0.body.stem.1.weight",
-            "backbone.0.body.bn1.bias": "backbone.0.body.stem.1.bias",
-            "backbone.0.body.bn1.running_mean": "backbone.0.body.stem.1.running_mean",
-            "backbone.0.body.bn1.running_var": "backbone.0.body.stem.1.running_var",
-            "backbone.0.body.bn1.num_batches_tracked": "backbone.0.body.stem.1.num_batches_tracked",
-        }
-
-        sd = {remap_keys.get(k, k): v for k, v in sd.items()}
         state_dict["model"] = sd
         logging.info(f"Loaded model weights from {state_dict_path}")
         if args.checkpoint:
@@ -249,7 +238,14 @@ def main(args):
     best_val_loss = state["best_val_loss"]
     best_roc_auc = -np.inf
 
-    names = ("LAH", "LB", "LPH", "MAH", "MB", "MPH")
+    NAMES = {
+        "global": ("anywhere", ),
+        "meniscus": ("lateral", "medial"),
+        "region": ("LAH", "LB", "LPH", "MAH", "MB", "MPH")
+            }
+
+    names = NAMES[args.data.labelling.split("-")[0]]
+
 
     METRICS = {
         "balanced_accuracy": partial(balanced_accuracy_score, names=names),

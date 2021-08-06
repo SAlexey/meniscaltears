@@ -44,11 +44,11 @@ def evaluate(
 
     with torch.no_grad():
         for input, target in loader:
+
             input = input.to(device)
 
             t0 = time.time()
             output = model(input)
-
             total_time += time.time() - t0
             total_steps += 1
 
@@ -95,27 +95,6 @@ def evaluate(
         eval_results[name] = metric(
             targets, outputs, **metrics_kwargs.get(name, dict())
         )
-
-        if name == "roc_auc_score":
-            tgt, out = {}, {}
-
-            # reduce labels to menisci first
-            tgt["labels"] = targets["labels"].max(-1).values
-            out["labels"] = outputs["labels"].max(-1).values
-
-            # compute roc auc scores for menisci
-            eval_results[f"menisci_{name}"] = metric(
-                tgt, out, names=("lateral", "medial")
-            )
-
-            # reduce labels further to anywhere
-
-            tgt["labels"] = tgt["labels"].max(-1).values.unsqueeze(1)
-            out["labels"] = out["labels"].max(-1).values.unsqueeze(1)
-
-            # compute roc auc for anywhere in the knee
-            eval_results[f"anywhere_{name}"] = metric(tgt, out, names=("knee",))
-
     return eval_results
 
 
