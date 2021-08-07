@@ -219,7 +219,7 @@ class MOAKSDataset(DatasetBase):
         root,
         anns,
         *args,
-        labelling: str = "region-tear",
+        setting: str = "region-tear",
         transforms=None,
         **kwargs,
     ):
@@ -232,11 +232,10 @@ class MOAKSDataset(DatasetBase):
         self.transform = transforms
         self.anns = []
         self.targets = []
-        self.labelling = labelling
-        # FIXME: position labels for different annotation types!
-        self.pos_weight = None if labelling.endswith("moaks") else 0
+        self.setting = setting
+        self.pos_weight = None if setting.endswith("moaks") else 0
 
-        assert labelling in {
+        assert setting in {
             "region-tear",
             "region-anomaly",
             "region-moaks",
@@ -270,13 +269,20 @@ class MOAKSDataset(DatasetBase):
             ]
 
             labels = torch.from_numpy(np.nan_to_num(np.asarray(labels).astype(float)))
-
-            resolution, detection = labelling.split("-")
+            boxes = torch.as_tensor(ann.get("boxes"))
+            
+            resolution, detection = setting.split("-")
 
             if resolution == "meniscus":
                 labels = labels.max(-1, keepdim=True).values
             elif resolution == "global":
+                # labels maximum
                 labels = labels.max().unsqueeze(0)
+                
+                # global box, enclosing both menisci
+                boxmin = boxes[:, :3].min(0, keepdim=True).values
+                boxmax = boxes[:, 3:].max(0, keepdim=True).values
+                boxes = torch.cat((boxmin, boxmax), -1)
 
             if detection == "tear":
                 labels = (labels > 1).float()
@@ -287,7 +293,7 @@ class MOAKSDataset(DatasetBase):
                 self.pos_weight += labels
 
             target["labels"] = labels
-            target["boxes"] = torch.as_tensor(ann.get("boxes"))
+            target["boxes"] = boxes
 
             self.targets.append(target)
             self.anns.append(ann)
@@ -461,7 +467,7 @@ class MixDataset(Dataset):
 def build(
     data_dir,
     anns_dir,
-    labelling,
+    setting,
     limit_train_items=False,
     limit_val_items=False,
     limit_test_items=False,
@@ -523,7 +529,7 @@ def build(
         dataset_train = MOAKSDataset(
             data_dir,
             anns_dir / "train.json",
-            labelling=labelling,
+            setting=setting,
             transforms=train_transforms,
         )
 
@@ -533,7 +539,7 @@ def build(
         dataset_val = MOAKSDataset(
             data_dir,
             anns_dir / "val.json",
-            labelling=labelling,
+            setting=setting,
             transforms=transforms,
         )
 
@@ -547,7 +553,7 @@ def build(
         dataset_test = MOAKSDataset(
             data_dir,
             anns_dir / "test.json",
-            labelling=labelling,
+            setting=setting,
             transforms=transforms,
         )
 

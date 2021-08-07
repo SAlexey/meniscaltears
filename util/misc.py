@@ -1,4 +1,5 @@
 from collections import deque
+import json
 from numbers import Number
 import nibabel as nib
 import numpy as np
@@ -8,6 +9,7 @@ from pathlib import Path
 from collections import defaultdict
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 from einops.einops import rearrange
+
 
 
 def save_as_nifty(arr, name):
@@ -29,6 +31,10 @@ def bbox_image(boxes: torch.Tensor, size=(160, 384, 384)):
 
 def _is_sequence(obj):
     return hasattr(obj, "__len__") and hasattr(obj, "__iter__")
+
+
+def class_getter(obj):
+    return obj.__class__
 
 
 def _is_numeric(obj):
@@ -148,6 +154,101 @@ class SmoothedValue(object):
     def __iadd__(self, value):
         self.add(value)
         return self
+
+
+class EarlyStopping(object):
+
+    def __init__(self, *, tolerance=1e-5, patience=7, warmup=10, minimize=True, name="criterion"):
+        self.name = name 
+        self.minimize = minimize 
+        self.tolerance = tolerance
+        self.warmup = warmup # number of epochs to warmup
+        self.patience = patience
+        self._best = np.inf
+        self._last = 0
+
+        if not self.minimize:
+            self._best *= -1
+
+    def checkpoint(self, model, epoch, optimizer=None, scheduler=None, early_stop=False, name="checkpoint.ckpt", **kwargs):
+
+        state_dict = {
+            "epoch": epoch,
+            "early_stop": early_stop,
+            "model": model.state_dict(),
+            "best_epoch": self._last,
+            f"best_{self.name}": self._best,
+            **kwargs
+        }
+
+        if optimizer is not None:
+            state_dict["optimizer"] = optimizer.state_dict()
+
+        if scheduler is not None: 
+            state_dict["scheduler"] = scheduler.state_dict()
+
+        self.save(state_dict, name)
+
+    def _save_best(self, model):
+        best, epoch = self.best
+        info = {
+            "epoch": epoch,
+            f"best_{self.name}": best
+        }
+        self.save(model.state_dict(), "best_model.pt", **info)        
+        
+
+    @staticmethod
+    def save(obj, name, **info):
+
+        path = Path(name)
+        torch.save(obj, name)
+        
+        if info:
+            misc = path.with_suffix(".json")
+            with misc.open("w") as fh:
+                json.dump(info, fh)
+
+    @property
+    def best(self):
+        return self._best, self._last
+
+    
+    def stop(self, value, epoch, model):
+        stop = False
+        value_diff = value - self._best
+        epoch_diff = epoch - self._last
+
+        # if the change is insignificant
+        if abs(value_diff) < self.tolerance:
+            stop = True
+
+        # if the patience is out
+        if epoch_diff > self.patience:
+            stop = True
+
+        # if the warmup is not over
+        if epoch < self.warmup:
+            stop = False
+
+        # update best values
+        if self.minimize:
+            if value_diff < 0:
+                self._best = value 
+                self._last = epoch 
+                self._save_best(model) 
+                
+        else:
+            if value_diff > 0:
+                self._best = value
+                self._last = epoch
+                self._save_best(model)
+               
+        return stop
+
+
+    def __call__(self, value, model, epoch):   
+        return self.stop(value, epoch, model)
 
 
 def _max_by_axis(the_list):

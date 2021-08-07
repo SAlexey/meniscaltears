@@ -34,7 +34,7 @@ from util.box_ops import (
 from einops import rearrange, parse_shape
 import sys
 from util.xai import SmoothGradientSaliency
-from util.misc import SmoothedValue
+from util.misc import EarlyStopping, SmoothedValue
 from torch.utils.data import DataLoader
 
 
@@ -123,7 +123,7 @@ class Postprocess(nn.Module):
     def __init__(self, cfg):
         super().__init__()
         self.attention = cfg.model.transformer is not None
-        res, _ = cfg.data.labelling.split("-")
+        res, _ = cfg.data.setting.split("-")
 
         self.labels = "obj cls" if res in ("region", "meniscus") else "cls"
 
@@ -235,16 +235,16 @@ def main(args):
     state = _load_state(args, model, optimizer, scheduler)
     start = state["start"]
     best_val_loss = state["best_val_loss"]
-    best_roc_auc = -np.inf
+
+    tracker = EarlyStopping(name="val_loss", patience=10)
 
     NAMES = {
         "global": ("anywhere", ),
         "meniscus": ("lateral", "medial"),
         "region": ("LAH", "LB", "LPH", "MAH", "MB", "MPH")
-            }
+    }
 
-    names = NAMES[args.data.labelling.split("-")[0]]
-
+    names = NAMES[args.data.setting.split("-")[0]]
 
     METRICS = {
         "balanced_accuracy": partial(balanced_accuracy_score, names=names),
@@ -373,6 +373,8 @@ def main(args):
         logging.info(
             f"epoch [{epoch:04d} / {epochs:04d}] | validation loss {epoch_loss:.4f} | inference time [{epoch_time:.2f} ({step_time:.3f})]"
         )
+        
+        scheduler.step()
 
         for metric in ("balanced_accuracy", "roc_auc_score"):
 
@@ -393,80 +395,26 @@ def main(args):
                     log.append(f"{label.capitalize()} [{each:3d}]")
                 logging.info(" | ".join(log))
 
-        avg_auc = np.mean(
-            list(eval_results.get("roc_auc_score", dict(default=-np.inf)).values())
-        )
+        early_stop = tracker(epoch_loss, model, epoch)
 
-        if avg_auc > best_roc_auc:
-            best_roc_auc = avg_auc
+        if early_stop:
+            tracker.checkpoint(model, epoch, optimizer, scheduler)
+            logging.info("Early stopping criterion met, exitting")
+            sys.exit()
 
-            torch.save(model.state_dict(), "best_roc_model.pt")
-            torch.save(eval_results, "best_roc_model_eval.pt")
-
-            with open("best_roc_model.json", "w") as fh:
-                json.dump(
-                    {
-                        "epoch": epoch,
-                        "val_loss": best_val_loss,
-                        "roc_auc": best_roc_auc,
-                        "bs": args.batch_size,
-                        "lr": args.lr,
-                        "lr_b": args.lr_backbone,
-                    },
-                    fh,
-                )
-
-        if epoch_loss < best_val_loss:
-
-            logging.info(f"Best Epoch Validation loss achieved!")
-            best_val_loss = epoch_loss
-
-            torch.save(model.state_dict(), "best_bce_model.pt")
-            torch.save(eval_results, "best_bce_model_eval.pt")
-
-            with open("best_bce_model.json", "w") as fh:
-                json.dump(
-                    {
-                        "epoch": epoch,
-                        "val_loss": best_val_loss,
-                        "roc_auc": avg_auc,
-                        "batch": args.batch_size,
-                    },
-                    fh,
-                )
-            logging.info("Best Model Saved!")
-        scheduler.step()
 
         if epoch % 5 == 0:
-
-            torch.save(
-                {
-                    "epoch": epoch,
-                    "model": model.state_dict(),
-                    "optimizer": optimizer.state_dict(),
-                    "scheduler": scheduler.state_dict(),
-                    "best_val_loss": best_val_loss,
-                    "best_roc_auc": best_roc_auc,
-                },
-                "checkpoint.ckpt",
-            )
+            tracker.checkpoint(model, epoch, optimizer, scheduler)
             logging.info("Checkpoint Saved!")
 
         for name, loss in losses.items():
             plt.plot(loss.values, label=name)
+
         plt.legend()
         plt.savefig("epoch_loss.jpg")
         plt.close()
 
-        # boxes = box_cxcywh_to_xyxy(eval_results["outputs"]["boxes"].flatten(0, 1))
-        # ious = box_iou(boxes[0::2], boxes[1::2]).diag()
-        # inter_iou_epoch.append(ious)
-
-        # plt.violinplot(inter_iou_epoch)
-        # plt.savefig("inter_iou.jpg")
-        # plt.close()
-
-    return best_val_loss
+    return tracker.best[0]
 
 
 if __name__ == "__main__":

@@ -143,18 +143,19 @@ class DETR3d(DETR):
             aux_loss=aux_loss,
         )
 
-        num_channels = self.backbone.num_channels
+        num_channels = self.backbone.num_channels        
+        num_coordinates = 6
+        
 
         if transformer is None:
             hidden_dim = num_channels
-            num_classes = num_classes
-            num_coordinates = 12
+            num_classes *= num_queries
+            num_coordinates *= num_queries
             self.input_proj = nn.Identity()
             del self.query_embed
 
         else:
-            hidden_dim = transformer.d_model
-            num_coordinates = 6
+            hidden_dim = transformer.d_model    
             self.input_proj = nn.Conv3d(num_channels, hidden_dim, kernel_size=1)
 
         self.class_embed = nn.Linear(hidden_dim, num_classes)
