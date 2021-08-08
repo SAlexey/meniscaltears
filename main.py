@@ -165,10 +165,14 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
 
     if args.state_dict:
         state_dict_path = to_absolute_path(args.state_dict)
-        state_dict["model"] = torch.load(state_dict_path, map_location=device)
+        model_state_dict = torch.load(state_dict_path, map_location=device)
+
+        if args.backbone_only:
+            model_state_dict = {k.repalce("backbone.", ""): v for k, v in model_state_dict.items() if "backbone" in k}
+            model = model.backbone
+
+        state_dict["model"] = model_state_dict
         logging.info(f"Loaded model weights from {state_dict_path}")
-        if args.checkpoint:
-            logging.warning("Model weights in checkpoint have been overwritten!")
 
     if "model" in state_dict:
         model.load_state_dict(state_dict["model"])

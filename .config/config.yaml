@@ -6,6 +6,7 @@ defaults:
 device: cuda
 checkpoint: false # path to the checkpoint
 state_dict: false
+backbone_only: false
 
 model:
   transformer: null
