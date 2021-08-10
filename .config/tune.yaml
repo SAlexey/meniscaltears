@@ -39,7 +39,7 @@ hydra:
     ax_config:
 
       # max_trials is application-specific. Tune it for your use case
-      max_trials: 40
+      max_trials: 30
 
       experiment:
         # Default to minimize, set to false to maximize
@@ -51,7 +51,7 @@ hydra:
           values: ["relu", "gelu"]
         model.transformer.nhead:
           type: choice
-          values: [2, 4, 6, 8]
+          values: [2, 4, 8]
         model.transformer.num_encoder_layers:
           type: range
           bounds: [2, 8]

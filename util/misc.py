@@ -216,8 +216,9 @@ class EarlyStopping(object):
     
     def stop(self, value, epoch, model):
         stop = False
-        value_diff = value - self._best
-        epoch_diff = epoch - self._last
+        best, last = self.best
+        value_diff = value - best
+        epoch_diff = epoch - max(last, self.patience)
 
         # if the change is insignificant
         if abs(value_diff) < self.tolerance:
@@ -226,10 +227,6 @@ class EarlyStopping(object):
         # if the patience is out
         if epoch_diff > self.patience:
             stop = True
-
-        # if the warmup is not over
-        if epoch < self.warmup:
-            stop = False
 
         # update best values
         if self.minimize:
