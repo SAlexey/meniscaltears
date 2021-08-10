@@ -240,7 +240,7 @@ def main(args):
     start = state["start"]
     best_val_loss = state["best_val_loss"]
 
-    tracker = EarlyStopping(name="val_loss", patience=10, warmup=10)
+    tracker = EarlyStopping(name="val_loss", patience=15, warmup=10)
 
     NAMES = {
         "global": ("anywhere", ),
