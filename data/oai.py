@@ -14,6 +14,7 @@ import math
 from util.box_ops import box_cxcywh_to_xyxy, denormalize_boxes
 from torch.utils.data import DataLoader
 from .transforms import *
+from util.misc import _is_sequence
 
 
 class CropDataset(Dataset):
