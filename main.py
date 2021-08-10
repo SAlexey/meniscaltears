@@ -404,7 +404,7 @@ def main(args):
         if early_stop:
             tracker.checkpoint(model, epoch, optimizer, scheduler)
             logging.info("Early stopping criterion met, exitting")
-            sys.exit()
+            return tracker.best[0]
 
 
         if epoch % 5 == 0:

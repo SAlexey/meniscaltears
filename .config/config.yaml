@@ -8,9 +8,6 @@ checkpoint: false # path to the checkpoint
 state_dict: false
 backbone_only: false
 
-model:
-  transformer: null
-
 # TESTING
 eval: false # only run evaluation (uses test set)
 cam: true # run grad cam for menisci (ignored if eval is false)

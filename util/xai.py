@@ -21,7 +21,7 @@ from data.transforms import crop_volume
 class AugSmoothTransform(T.Compose):
     def __init__(self, p=0.5):
         self.p = p
-        self.noise = torch.distributions.Normal(0.1, 0.5)
+        self.noise = torch.distributions.Normal(0.1, 0.2)
         self.transforms = [
             self.random_hflip,
             self.random_noise,
@@ -298,11 +298,11 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
 
         for _ in progress:
 
-            grads.append(self.get_saliency(self.img_aug(input), key, index, regions)[0])
+            grads.append(self.get_saliency(self.img_aug(input), key, index, regions, saliency=nn.Identity())[0])
 
         return (
             grad.detach().cpu(),
-            torch.stack(grads).mean(dim=0).detach().cpu(),
+            torch.stack(grads).detach().mean(dim=0).abs().cpu(),
             output,
         )
 

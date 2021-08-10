@@ -1,0 +1,86 @@
+defaults:
+  - model: detr_3d
+  - data: oai
+  - override hydra/sweeper: ax
+
+# MODEL
+device: cuda
+checkpoint: false # path to the checkpoint
+state_dict: false # /scratch/htc/ashestak/meniscaltears/outputs/detr18_global_anomaly/best_model
+backbone_only: true
+
+data:
+  setting: global-anomaly
+
+model:
+  transformer: 
+    nhead: ?? #8
+    activation: ?? # "relu"
+    num_encoder_layers: ?? # 6
+    num_decoder_layers: ?? # 6
+    dim_feedforward: ?? # 2048
+    dropout: ?? #0.1
+
+# TRAINING SETTINGS & HPARAMS
+num_epochs: 50
+batch_size: 4
+num_workers: 6
+lr: ?? # default learning rate
+lr_backbone: 0.00001 # cnn learning rate
+lr_drop_step: 10
+lr_drop_rate: 0.75
+window: 20
+
+hydra:
+  sweeper:
+    # The following part of config is used to setup the Hydra Ax plugin and is optional
+    ax_config:
+
+      # max_trials is application-specific. Tune it for your use case
+      max_trials: 40
+
+      experiment:
+        # Default to minimize, set to false to maximize
+        minimize: true
+
+      params:
+        model.transformer.activation:
+          type: choice
+          values: ["relu", "gelu"]
+        model.transformer.nhead:
+          type: choice
+          values: [2, 4, 6, 8]
+        model.transformer.num_encoder_layers:
+          type: range
+          bounds: [2, 8]
+        model.transformer.num_decoder_layers:
+          type: range
+          bounds: [2, 8]
+        model.transformer.dim_feedforward:
+          type: choice
+          values: [1024, 2048]
+        model.transformer.dropout:
+          type: choice
+          values: [0.0, 0.1, 0.25, 0.50, 0.70]
+        lr:
+          type: choice 
+          values: [0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00005]
+
+# TESTING
+eval: false # only run evaluation (uses test set)
+cam: false # run grad cam for menisci (ignored if eval is false)
+meniscus: [0, 1] # run grad cam for these menisci (ignored if eval is false or cam is false)
+metrics:
+  - balanced_accuracy
+  - roc_curve
+  - roc_auc_score
+  - precision_recall_curve
+  - confusion_matrix
+
+# CRITERION
+weights:
+  labels: 1
+  boxes: 5
+  giou: 2
+  # inter: 0.7
+
