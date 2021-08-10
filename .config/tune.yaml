@@ -13,6 +13,8 @@ data:
   setting: global-anomaly
 
 model:
+  num_classes: 1 # global = 1; region = 3;
+  num_queries: 1 # global = 1; meniscus = 2; 
   transformer: 
     nhead: ?? #8
     activation: ?? # "relu"
