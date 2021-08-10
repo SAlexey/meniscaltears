@@ -6,8 +6,11 @@ defaults:
 # MODEL
 device: cuda
 checkpoint: false # path to the checkpoint
-state_dict: /scratch/htc/ashestak/meniscaltears/outputs/detr18_global_anomaly/best_model
+state_dict: false # /scratch/htc/ashestak/meniscaltears/outputs/detr18_global_anomaly/best_model
 backbone_only: true
+
+data:
+  setting: global-anomaly
 
 model:
   transformer: 
