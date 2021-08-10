@@ -201,47 +201,13 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
 def main(args):
     _set_random_seed(50899)
 
-    model = call(args.model)
-    criterion = MixCriterion(**args.weights)
-
     device = torch.device(args.device)
     logging.info(f"Running On Device: {device}")
 
+    model = call(args.model)
     model.to(device)
-    criterion.to(device)
 
-    param_groups = [
-        {
-            "params": [
-                p
-                for n, p in model.named_parameters()
-                if ("backbone" in n) and p.requires_grad
-            ],
-            "lr": args.lr_backbone,
-        },
-        {
-            "params": [
-                p
-                for n, p in model.named_parameters()
-                if ("backbone" not in n) and p.requires_grad
-            ]
-        },
-    ]
-
-    optimizer = torch.optim.Adam(param_groups, lr=args.lr)
-    scheduler = torch.optim.lr_scheduler.StepLR(
-        optimizer, args.lr_drop_step, args.lr_drop_rate
-    )
-    epochs = args.num_epochs
-
-    losses = defaultdict(lambda: SmoothedValue(window=None))
-
-    state = _load_state(args, model, optimizer, scheduler)
-    start = state["start"]
-    best_val_loss = state["best_val_loss"]
-
-    tracker = EarlyStopping(name="val_loss", patience=15, warmup=10)
-
+    
     NAMES = {
         "global": ("anywhere", ),
         "meniscus": ("lateral", "medial"),
@@ -257,8 +223,9 @@ def main(args):
         "precision_recall_curve": partial(precision_recall_curve, names=names),
         "confusion_matrix": partial(confusion_matrix, names=names),
     }
-    logging.info(f"Running: {model}")
     metrics = {key: METRICS[key] for key in args.metrics}
+    
+    logging.info(f"Running: {model}")
 
     postprocess = Postprocess(args)
     # WARNING: NO SIGMOID IN POSTPROCESS FOR LABELS
@@ -309,6 +276,42 @@ def main(args):
         torch.save(test_results, "test_results.pt")
         logging.info("Testing finished, exitting")
         sys.exit(0)
+
+    param_groups = [
+        {
+            "params": [
+                p
+                for n, p in model.named_parameters()
+                if ("backbone" in n) and p.requires_grad
+            ],
+            "lr": args.lr_backbone,
+        },
+        {
+            "params": [
+                p
+                for n, p in model.named_parameters()
+                if ("backbone" not in n) and p.requires_grad
+            ]
+        },
+    ]
+
+    optimizer = torch.optim.Adam(param_groups, lr=args.lr)
+    scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer, args.lr_drop_step, args.lr_drop_rate
+    )
+    epochs = args.num_epochs
+
+    losses = defaultdict(lambda: SmoothedValue(window=None))
+
+    state = _load_state(args, model, optimizer, scheduler)
+    start = state["start"]
+    best_val_loss = state["best_val_loss"]
+
+    tracker = EarlyStopping(name="val_loss", patience=15, warmup=10)
+
+    criterion = MixCriterion(**args.weights)
+    criterion.to(device)
+
 
     train_data, val_data = data
 
