@@ -260,18 +260,12 @@ def main(args):
 
                         name = f"{img_id.item()}_{LAT_MED[meniscus]}"
 
-                        if args.crop:
-                            target = None
-                        else:
-                            target = b_tgt["boxes"][i]
-
                         sg_sal(
                             img,
                             index,
                             tgt[meniscus],
                             save_as=name,
-                            boxes=target,
-                            num_passes=1,
+                            num_passes=20,
                         )
         torch.save(test_results, "test_results.pt")
         logging.info("Testing finished, exitting")
