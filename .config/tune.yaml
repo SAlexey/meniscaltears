@@ -48,8 +48,8 @@ hydra:
           type: choice
           values: ["relu", "gelu"]
         model.transformer.nhead:
-          type: range
-          bounds: [2, 10]
+          type: choice
+          values: [2, 4, 6, 8]
         model.transformer.num_encoder_layers:
           type: range
           bounds: [2, 8]
