@@ -55,10 +55,10 @@ hydra:
           values: [1024, 2048]
         model.transformer.dropout:
           type: choice
-          bounds: [0.0, 0.1, 0.25, 0.50, 0.70]
+          values: [0.0, 0.1, 0.25, 0.50, 0.70]
         lr:
           type: choice 
-          bounds: [0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00005]
+          values: [0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00005]
 
 # TESTING
 eval: false # only run evaluation (uses test set)
