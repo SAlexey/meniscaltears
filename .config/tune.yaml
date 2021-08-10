@@ -41,6 +41,9 @@ hydra:
         minimize: true
 
       params:
+        model.transformer.activation:
+          type: choice
+          values: ["relu", "gelu"]
         model.transformer.nhead:
           type: range
           bounds: [2, 10]
