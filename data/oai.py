@@ -563,7 +563,8 @@ def build(
         if limit_test_items:
             if _is_sequence(limit_test_items):
                 dataset_test.anns = [ann for ann in dataset_test.anns if ann["image_id"] in limit_test_items]
-            dataset_test.anns = dataset_test.anns[:limit_test_items]
+            else:
+                dataset_test.anns = dataset_test.anns[:limit_test_items]
 
         return dataset_test
 
