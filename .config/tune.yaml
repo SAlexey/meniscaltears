@@ -1,7 +1,7 @@
 defaults:
-  - override hydra/sweeper: ax
   - model: detr_3d
   - data: oai
+  - override hydra/sweeper: ax
 
 # MODEL
 device: cuda
