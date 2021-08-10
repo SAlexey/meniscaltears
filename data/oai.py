@@ -500,15 +500,11 @@ def build(
         output_size = (44, 320, 320) if tse else (160, 320, 320)
 
     resize = Resize(output_size)
-    b_size, w_size = 11, 7
 
     if tse:
-        w_size, b_size = b_size, w_size
         normalize = Normalize(mean=(0.21637,), std=(0.18688,))
     else:
         normalize = Normalize(mean=(0.4945,), std=(0.3782,))
-
-    tophat = TopHatFilter(b_size, w_size)
 
     transforms = Compose([to_tensor, center_crop, resize, normalize])
 
@@ -534,7 +530,10 @@ def build(
         )
 
         if limit_train_items:
-            dataset_train.anns = dataset_train.anns[:limit_train_items]
+            if _is_sequence(limit_train_items):
+                dataset_train.anns = [ann for ann in dataset_train.anns if ann["image_id"] in limit_train_items]
+            else:
+                dataset_train.anns = dataset_train.anns[:limit_train_items]
 
         dataset_val = MOAKSDataset(
             data_dir,
@@ -544,7 +543,10 @@ def build(
         )
 
         if limit_val_items:
-            dataset_val.anns = dataset_val.anns[:limit_val_items]
+            if _is_sequence(limit_val_items):
+                dataset_val.anns = [ann for ann in dataset_val.anns if ann["image_id"] in limit_val_items]
+            else:
+                dataset_val.anns = dataset_val.anns[:limit_val_items]
 
         return dataset_train, dataset_val
 
@@ -558,6 +560,8 @@ def build(
         )
 
         if limit_test_items:
+            if _is_sequence(limit_test_items):
+                dataset_test.anns = [ann for ann in dataset_test.anns if ann["image_id"] in limit_test_items]
             dataset_test.anns = dataset_test.anns[:limit_test_items]
 
         return dataset_test
