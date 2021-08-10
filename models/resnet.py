@@ -77,7 +77,7 @@ class BasicStem3D(nn.Sequential):
 
     def __init__(
         self,
-        in_channels=3,
+        in_channels=1,
         out_channels=64,
         kernel_size=(3, 7, 7),
         stride=(1, 2, 2),

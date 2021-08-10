@@ -125,7 +125,7 @@ class Postprocess(nn.Module):
         self.attention = cfg.model.transformer is not None
         res, _ = cfg.data.setting.split("-")
 
-        self.labels = "obj cls" if res in ("region", "meniscus") else "cls"
+        # self.labels = "obj cls" if res in ("region", "meniscus") else "cls"
 
     def forward(
         self, output: Dict[str, torch.Tensor], target: Dict[str, torch.Tensor], **kwargs
@@ -141,9 +141,9 @@ class Postprocess(nn.Module):
             boxes = output["boxes"]
 
         if not self.attention:
-            shape = parse_shape(target["labels"], f"bs {self.labels}")
+            shape = parse_shape(target["labels"], f"bs obj cls")
             labels = rearrange(
-                labels, f"bs ({self.labels}) -> bs {self.labels}", **shape
+                labels, f"bs (obj cls) -> bs obj cls", **shape
             )
             boxes = rearrange(boxes, "bs (obj box) -> bs obj box", box=6)
 
@@ -168,7 +168,7 @@ def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
         model_state_dict = torch.load(state_dict_path, map_location=device)
 
         if args.backbone_only:
-            model_state_dict = {k.repalce("backbone.", ""): v for k, v in model_state_dict.items() if "backbone" in k}
+            model_state_dict = {k.replace("backbone.", ""): v for k, v in model_state_dict.items() if "backbone" in k}
             model = model.backbone
 
         state_dict["model"] = model_state_dict
@@ -240,7 +240,7 @@ def main(args):
     start = state["start"]
     best_val_loss = state["best_val_loss"]
 
-    tracker = EarlyStopping(name="val_loss", patience=10)
+    tracker = EarlyStopping(name="val_loss", patience=10, warmup=60)
 
     NAMES = {
         "global": ("anywhere", ),

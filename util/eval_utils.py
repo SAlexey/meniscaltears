@@ -24,7 +24,7 @@ def _align(y_true, y_pred, names=None):
 
     assert y_true.shape == y_pred.shape
     if isinstance(names, str):
-        names = ("names",)
+        names = (names,)
 
     if y_true.ndim == 1:
         y_true = y_true.view(-1, 1)

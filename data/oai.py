@@ -277,7 +277,7 @@ class MOAKSDataset(DatasetBase):
                 labels = labels.max(-1, keepdim=True).values
             elif resolution == "global":
                 # labels maximum
-                labels = labels.max().unsqueeze(0)
+                labels = labels.max().view(1, 1)
                 
                 # global box, enclosing both menisci
                 boxmin = boxes[:, :3].min(0, keepdim=True).values
@@ -510,7 +510,7 @@ def build(
 
     tophat = TopHatFilter(b_size, w_size)
 
-    transforms = Compose([to_tensor, center_crop, resize, normalize, tophat])
+    transforms = Compose([to_tensor, center_crop, resize, normalize])
 
     if train:
 
@@ -522,7 +522,7 @@ def build(
                 center_crop,
                 resize,
                 normalize,
-                tophat,
+                #tophat,
             ]
         )
 
