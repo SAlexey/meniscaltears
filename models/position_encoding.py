@@ -12,10 +12,10 @@ import numpy as np
 
 class PositionEmbeddingSine1d(nn.Module):
     def __init__(
-        self, num_pos_feats=64, temperature=10000, normalize=False, scale=None
+        self, hidden_dim, temperature=10000, normalize=False, scale=None
     ):
         super().__init__()
-        self.num_pos_feats = num_pos_feats
+        self.num_pos_feats = hidden_dim
         self.temperature = temperature
         self.normalize = normalize
         if scale is not None and normalize is False:
@@ -49,6 +49,11 @@ class PositionEmbeddingSine2d(PositionEmbeddingSine1d):
     This is a more standard version of the position embedding, very similar to the one
     used by the Attention is all you need paper, generalized to work on images.
     """
+
+    def __init__(self, hidden_dim, *args, **kwargs):
+        assert hidden_dim % 2 == 0
+        super().__init__(hidden_dim, *args, **kwargs)
+        self.num_pos_feats = hidden_dim // 2
 
     def forward(self, tensor_list: NestedTensor):
         x = tensor_list.tensors
@@ -96,6 +101,11 @@ class PositionEmbeddingSine3d(PositionEmbeddingSine2d):
     This is a more standard version of the position embedding, very similar to the one
     used by the Attention is all you need paper, generalized to work on images.
     """
+
+    def __init__(self, hidden_dim, *args, **kwargs):
+        assert hidden_dim % 3 == 0
+        super().__init__(hidden_dim, *args, **kwargs)
+        self.num_pos_feats = hidden_dim // 3
 
     def forward(self, tensor_list: NestedTensor):
         x = tensor_list.tensors

@@ -237,6 +237,7 @@ def main(args):
     data = call(args.data, train=not args.eval)
 
     if args.eval:
+        _load_state(args, model)
         loader = DataLoader(data, batch_size=args.batch_size)
         logging.info("Running evaluation on the test set")
         test_results = evaluate(
@@ -247,16 +248,14 @@ def main(args):
             logging.info(f"Test AUC: {test_results['roc_auc_score']}")
 
         if args.cam:
+            assert args.batch_size == 1, "Only batch size 1 is supported!"    
             logging.info(f"Obtaining GradCAM")
-            for b_img, b_tgt in loader:
-                b_targets = b_tgt["labels"]
-                ids = b_tgt["image_id"]
-                for i, (img, tgt, img_id) in enumerate(zip(b_img, b_targets, ids)):
-                    img = img.unsqueeze(0)
-                    for meniscus in range(2):
-                        index = (0, meniscus, ...)
-                        name = f"{img_id.item()}_{LAT_MED[meniscus]}"
-                        sg_sal(img, index, save_as=name, num_passes=20)
+            for input, target in loader:
+                image_id = target['image_id'].squeeze().item()
+                logging.info(f"Image id: {image_id}; labels={target['labels'].flatten()}")
+                index = (0, 0, ...)
+                name = f"{image_id}_global"
+                sg_sal(input, index, save_as=name, num_passes=20, target=target)
                         
         torch.save(test_results, "test_results.pt")
         logging.info("Testing finished, exitting")

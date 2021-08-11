@@ -16,6 +16,7 @@ import torchvision.transforms as T
 from torchvision.transforms import functional as TF
 from random import random, randrange
 from data.transforms import crop_volume
+import logging
 
 
 class AugSmoothTransform(T.Compose):
@@ -82,7 +83,13 @@ class HeatmapGifOverlayMixin(object):
         else:
             alpha *= 0
 
-        for n in range(img.shape[0]):
+        
+        progress = range(img.shape[0])
+
+        if self.progress:
+            progress = tqdm(progress, desc="Heatmap")
+
+        for n in progress:
             fd, path = tempfile.mkstemp(suffix=".png")
             tmp_files.append(path)
             desc.append(fd)
@@ -92,6 +99,7 @@ class HeatmapGifOverlayMixin(object):
             plt.imshow(heatmap[n], cmap, interpolation="none", alpha=alpha[n])
             plt.savefig(path)
             plt.close()
+
 
         images = []
         for path, fd in zip(tmp_files, desc):
@@ -104,6 +112,7 @@ class HeatmapGifOverlayMixin(object):
             name = f"{name}.gif"
 
         imageio.mimsave(name, images)
+        logging.info(f"Saved {name}")
 
 
 class ActivationsAndGradients:
@@ -261,6 +270,7 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
         key,
         index,
         saliency=torch.abs,
+        target=None
     ):
 
         assert saliency is not None and callable(saliency)
@@ -271,7 +281,8 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
         output = self.model(input)
 
         if self.postprocess is not None:
-            output = self.postprocess(output)
+            output = self.postprocess(output, target)
+
         out = (output[key][index]).sum()
         out.backward()
 
@@ -285,20 +296,26 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
         key,
         index,
         num_passes=1,
+        target=None,
     ):
         input = input.to(self.device)
 
-        grad, output = self.get_saliency(input, key, index)
+        grad, output = self.get_saliency(input, key, index, target=target)
+
+        
+        with torch.no_grad():
+            labels = output["labels"].sigmoid().cpu().flatten()
+            logging.info(f"predictions = {labels}")
 
         grads = [grad]
 
         progress = range(num_passes - 1)
         if self.progress:
-            progress = tqdm(progress)
+            progress = tqdm(progress, desc="Smooth Grad")
 
         for _ in progress:
             saliency = nn.Identity()
-            aug_grad, _ = self.get_saliency(self.img_aug(input), key, index, saliency=saliency)
+            aug_grad, _ = self.get_saliency(self.img_aug(input), key, index, saliency=saliency, target=target)
             grads.append(aug_grad)
 
         grad = grad.detach().cpu()
@@ -313,6 +330,7 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
         key="labels",
         num_passes=1,
         save_as=False,
+        target=None
     ):
         self.model.eval()
 
@@ -322,51 +340,16 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
 
         assert input.size(0) == 1, f"Expecting batch size 1, got bs={input.size(0)}"
 
-        vanilla_grad, smooth_grad, output = self.get_smooth_grad(
-            input, key, index, num_passes=num_passes
+        _, smooth_grad, output = self.get_smooth_grad(
+            input, key, index, num_passes=num_passes, target=target
         )
 
         if save_as:
 
-            inputs = []
-            names = []
+            input = input.squeeze().cpu().numpy()
+            grad = smooth_grad.squeeze().cpu().numpy()
 
-            with open(f"{save_as}_output.json", "w") as fh:
-
-                labels = {
-                    k: v
-                    for k, v in zip(
-                        ("LAH", "LB", "LPH", "MAH", "MB", "MPH"),
-                        output["labels"].sigmoid().flatten(),
-                    )
-                }
-
-                json.dump(labels, fh)
-
-            for input, name in zip(inputs, names):
-
-                image = input[0].squeeze().cpu().numpy()
-                image_name = name[0]
-
-                grad_images = input[1:]
-                grad_names = name[1:]
-
-                # save image only
-                zero_grad = np.zeros_like(image)
-                self.to_gif(
-                    image, zero_grad, f"{save_as}_{image_name}", cam_type="gradient"
-                )
-
-                for grad, grad_name in zip(grad_images, grad_names):
-                    grad = grad.squeeze().cpu().numpy()
-
-                    # save image with overlay gradient
-
-                    self.to_gif(
-                        image,
-                        grad,
-                        f"{save_as}_{grad_name}_overlay",
-                        cam_type="gradient",
-                    )
+            # save image with overlay gradient
+            self.to_gif(input, grad, f"{save_as}_smooth_grad_overlay", cam_type="gradient")
 
         return smooth_grad
