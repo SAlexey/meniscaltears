@@ -254,6 +254,7 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
         self.device = _get_model_device(self.model)
         return super().to(*args, **kwargs)
 
+
     def get_saliency(
         self,
         input: torch.Tensor,

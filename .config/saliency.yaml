@@ -13,7 +13,6 @@ num_workers: 2
 # TESTING
 eval: True # only run evaluation (uses test set)
 cam: True # run grad cam for menisci (ignored if eval is false)
-meniscus: [0, 1] # run grad cam for these menisci (ignored if eval is false or cam is false)
 metrics: []
 data:
   limit_test_items: # list of image ids or N to slice anns[:N]
