@@ -255,15 +255,11 @@ def main(args):
                 for i, (img, tgt, img_id) in enumerate(zip(b_img, b_targets, ids)):
                     img = img.unsqueeze(0)
                     for meniscus in range(2):
-                        pos_labels = tgt[meniscus].nonzero()  # indeces where labels > 0
-                        index = (0, meniscus, pos_labels)
-
                         name = f"{img_id.item()}_{LAT_MED[meniscus]}"
-
+                        index = (0, meniscus, ...)
                         sg_sal(
                             img,
                             index,
-                            tgt[meniscus],
                             save_as=name,
                             num_passes=20,
                         )

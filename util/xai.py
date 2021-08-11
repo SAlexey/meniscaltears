@@ -254,12 +254,12 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
         self.device = _get_model_device(self.model)
         return super().to(*args, **kwargs)
 
+
     def get_saliency(
         self,
         input: torch.Tensor,
         key,
         index,
-        regions,
         saliency=torch.abs,
     ):
 
@@ -271,7 +271,16 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
 
         if self.postprocess is not None:
             output = self.postprocess(output)
-        out = (output[key][index] * regions).sum()
+
+
+        index = ...
+
+        if key == "labels": 
+            # get the positive predictions
+            with torch.no_grad():
+                index = (output[key].sigmoid() > 0.5).nonzero()
+
+        out = (output[key][index]).sum()
         out.backward()
 
         out = saliency(input.grad.data)
@@ -283,22 +292,21 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
         input: torch.Tensor,
         key,
         index,
-        regions,
         num_passes=50,
     ):
         input = input.to(self.device)
 
-        grad, output = self.get_saliency(input, key, index, regions)
+        grad, output = self.get_saliency(input, key, index)
 
         grads = [grad]
 
-        progress = range(num_passes)
+        progress = range(num_passes - 1)
         if self.progress:
             progress = tqdm(progress)
 
         for _ in progress:
 
-            grads.append(self.get_saliency(self.img_aug(input), key, index, regions, saliency=nn.Identity())[0])
+            grads.append(self.get_saliency(self.img_aug(input), key, index, saliency=nn.Identity())[0])
 
         return (
             grad.detach().cpu(),
@@ -310,13 +318,10 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
         self,
         input,
         index,
-        regions,
         key="labels",
-        num_passes=15,
+        num_passes=1,
         save_as=False,
-        boxes=None,
     ):
-        regions = regions.to(self.device)
         self.model.eval()
 
         assert (
@@ -326,7 +331,7 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
         assert input.size(0) == 1, f"Expecting batch size 1, got bs={input.size(0)}"
 
         vanilla_grad, smooth_grad, output = self.get_smooth_grad(
-            input, key, index, regions, num_passes=num_passes
+            input, key, index, num_passes=num_passes
         )
 
         if save_as:
@@ -345,59 +350,6 @@ class SmoothGradientSaliency(nn.Module, HeatmapGifOverlayMixin):
                 }
 
                 json.dump(labels, fh)
-
-            if boxes is not None:
-
-                input = input.squeeze(0).detach()
-                vanilla_grad = vanilla_grad.squeeze(0)
-                smooth_grad = smooth_grad.squeeze(0)
-
-                box = box_cxcywh_to_xyxy(boxes)
-                box = denormalize_boxes(box)
-
-                box = box[index[1], [0, 3]].squeeze()
-
-                # crop (tgt_box_zmin, 0, 0, box_depth, img_height, img_width)
-                crop = box[0], 0, 0, box[1] - box[0], *input.size()[-2:]
-                print("crop target box", crop)
-
-                image, _ = crop_volume(input, crop)
-                image_grad, _ = crop_volume(smooth_grad, crop)
-
-                images = (image, image_grad)
-                image_names = ("image", "smooth_grad")
-
-                if self.vanilla:
-
-                    images += (crop_volume(vanilla_grad, crop)[0],)
-                    image_names += ("vanilla_grad",)
-
-                inputs.append(images)
-                names.append(image_names)
-
-                # crop by output
-                box = box_cxcywh_to_xyxy(output["boxes"])
-                box = denormalize_boxes(box)
-                box = box[index[:2]].squeeze()
-
-                # crop only by output box
-                crop = *box[:3], box[3] - box[0], box[4] - box[1], box[5] - box[2]
-
-                print("crop output box", crop)
-
-                image, _ = crop_volume(input, crop)
-                image_grad, _ = crop_volume(smooth_grad, crop)
-
-                images = (image, image_grad)
-                image_names = ("image_crop", "smooth_grad_crop")
-
-                if self.vanilla:
-
-                    images += (crop_volume(vanilla_grad, crop)[0],)
-                    image_names += ("vanilla_grad_crop",)
-
-                inputs.append(images)
-                names.append(image_names)
 
             for input, name in zip(inputs, names):
 
