@@ -222,7 +222,7 @@ class MOAKSDataset(DatasetBase):
         *args,
         setting: str = "region-tear",
         transforms=None,
-        limit=None
+        limit=None,
         **kwargs,
     ):
 
@@ -248,11 +248,11 @@ class MOAKSDataset(DatasetBase):
         }
 
 
-        if limit is not None:
+        if limit is not None and limit is not False:
             if _is_sequence(limit):
                 anns = [ann for ann in anns if ann["image_id"] in limit]
             else:
-                anns = np.random.choice(anns, limit)
+                anns = np.random.choice(np.asarray(anns), size=limit)
 
 
         for ann in anns:
@@ -546,7 +546,7 @@ def build(
             anns_dir / "val.json",
             setting=setting,
             transforms=transforms,
-            limit=limit_train_val
+            limit=limit_train_items
         )
 
         return dataset_train, dataset_val
