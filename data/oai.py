@@ -222,6 +222,7 @@ class MOAKSDataset(DatasetBase):
         *args,
         setting: str = "region-tear",
         transforms=None,
+        limit=None
         **kwargs,
     ):
 
@@ -245,6 +246,14 @@ class MOAKSDataset(DatasetBase):
             "global-tear",
             "global-anomaly",
         }
+
+
+        if limit is not None:
+            if _is_sequence(limit):
+                anns = [ann for ann in anns if ann["image_id"] in limit]
+            else:
+                anns = np.random.choice(anns, limit)
+
 
         for ann in anns:
 
@@ -528,26 +537,17 @@ def build(
             anns_dir / "train.json",
             setting=setting,
             transforms=train_transforms,
+            limit=limit_train_items
         )
 
-        if limit_train_items:
-            if _is_sequence(limit_train_items):
-                dataset_train.anns = [ann for ann in dataset_train.anns if ann["image_id"] in limit_train_items]
-            else:
-                dataset_train.anns = dataset_train.anns[:limit_train_items]
 
         dataset_val = MOAKSDataset(
             data_dir,
             anns_dir / "val.json",
             setting=setting,
             transforms=transforms,
+            limit=limit_train_val
         )
-
-        if limit_val_items:
-            if _is_sequence(limit_val_items):
-                dataset_val.anns = [ann for ann in dataset_val.anns if ann["image_id"] in limit_val_items]
-            else:
-                dataset_val.anns = dataset_val.anns[:limit_val_items]
 
         return dataset_train, dataset_val
 
@@ -558,13 +558,8 @@ def build(
             anns_dir / "test.json",
             setting=setting,
             transforms=transforms,
+            limit=limit_test_items
         )
-
-        if limit_test_items:
-            if _is_sequence(limit_test_items):
-                dataset_test.anns = [ann for ann in dataset_test.anns if ann["image_id"] in limit_test_items]
-            else:
-                dataset_test.anns = dataset_test.anns[:limit_test_items]
 
         return dataset_test
 
