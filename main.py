@@ -36,7 +36,7 @@ import sys
 from util.xai import SmoothGradientSaliency
 from util.misc import EarlyStopping, SmoothedValue
 from torch.utils.data import DataLoader
-
+import pdb
 
 REGION = {0: "anterior_horn", 1: "body", 2: "posterior_horn"}
 LAT_MED = {0: "lateral", 1: "medial"}
@@ -63,13 +63,19 @@ class MixCriterion(nn.Module):
     loss_dict = {"labels": torch.Tensor[1]}
     """
 
-    def __init__(self, **weights):
+    def __init__(self, label_set, **weights):
         super().__init__()
         self.weight = weights
-
+        self.label_set = label_set
+    
     @pick("labels")
     def loss_labels(self, out, tgt, **kwargs):
-        loss = F.binary_cross_entropy_with_logits(out, tgt, **kwargs)
+        if self.label_set == "moaks":
+            loss = F.cross_entropy_loss
+            kwargs["weight"] = kwargs.pop("pos_weight")
+        else:
+            loss = F.binary_cross_entropy_with_logits
+        loss = loss(out, tgt, **kwargs)
         return loss
 
     @pick("boxes")
@@ -122,14 +128,39 @@ class MixCriterion(nn.Module):
 class Postprocess(nn.Module):
     def __init__(self, cfg):
         super().__init__()
-        self.attention = cfg.model.transformer is not None
-        res, _ = cfg.data.setting.split("-")
 
-        # self.labels = "obj cls" if res in ("region", "meniscus") else "cls"
+        label_set, _, class_set = cfg.data.setting.split("-")[0]
+        
+        if cfg.transformer is None:
+            
+            if class_set == "moaks":
+                rearrange_cls = "bs (obj cls) -> bs obj cls"
+            else:
+                rearrange_cls = "bs (cls obj reg) -> bs cls obj reg"
+            rearrange_box = "bs (obj box) -> bs obj box"
+            shape = {}
+
+        else:
+            rearrange_cls = "bs (obj cls) -> bs obj cls"
+            rearrange_box = "bs obj box -> bs obj box"
+            shape = {}
+
 
     def forward(
         self, output: Dict[str, torch.Tensor], target: Dict[str, torch.Tensor], **kwargs
     ):
+
+
+        # transformer
+        # output: 
+        # labels: [bs, num_queries, num_classes]
+        # boxes: [bs, num_queries, 6]
+
+        # resnet
+        # output:
+        # labels: [bs, num_queries * num_classes]
+        # boxes: [bs, num_queries * 6]
+
         if "pred_logits" in output:
             labels = output["pred_logits"]
         else:
@@ -145,12 +176,36 @@ class Postprocess(nn.Module):
             labels = rearrange(
                 labels, f"bs (obj cls) -> bs obj cls", **shape
             )
+
             boxes = rearrange(boxes, "bs (obj box) -> bs obj box", box=6)
+
+        
+
 
         output["labels"] = labels
         output["boxes"] = boxes
 
         return output
+
+
+class PostprocessAblation(Postprocess):
+
+    def forward(self, output, target, **kwargs):
+
+        if "pred_logits" in output:
+            labels = output["pred_logits"]
+        else:
+            labels = output["labels"]
+
+        if not self.attention:
+            shape = parse_shape(target["labels"], f"bs obj cls")
+            labels = rearrange(
+                labels, f"bs (obj cls) -> bs obj cls", **shape
+            )
+
+        output["labels"] = labels
+        return output
+
 
 
 def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
@@ -206,8 +261,12 @@ def main(args):
 
     model = call(args.model)
     model.to(device)
-
     
+
+    num_params = sum(torch.prod(torch.as_tensor(p.shape)) for p in model.parameters() if p.requires_grad)
+
+    logging.info(f"Number of Parameters: {num_params}")
+
     NAMES = {
         "global": ("anywhere", ),
         "meniscus": ("lateral", "medial"),
@@ -291,9 +350,9 @@ def main(args):
     start = state["start"]
     best_val_loss = state["best_val_loss"]
 
-    tracker = EarlyStopping(name="val_loss", patience=15, warmup=10)
-
-    criterion = MixCriterion(**args.weights)
+    tracker = EarlyStopping(name="val_loss", patience=100, warmup=30)
+    label_set, *_ = args.data.setting.split("-")
+    criterion = MixCriterion(label_set, **args.weights)
     criterion.to(device)
 
 
@@ -314,13 +373,13 @@ def main(args):
 
     # start training
     logging.info(f"Epoch {start}; Best Validation Loss {best_val_loss:.4f}")
+    logging.info(f"Positive weight: {train_data.pos_weight}")
     logging.info(f"Starting training")
     for epoch in range(start, epochs):
 
         pos_weight = loader_train.dataset.pos_weight
         if isinstance(pos_weight, torch.Tensor):
             pos_weight = pos_weight.to(device)
-
         train_results = train(
             model,
             loader_train,

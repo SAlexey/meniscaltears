@@ -47,6 +47,7 @@ def conv1x1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv3d:
 def stem(name):
     CHOICES = {
         "basic_res": BasicStem3D,
+        "basic_377": BasicStem377, 
         "basic": models.video.resnet.BasicStem,
         "2plus1d": models.video.resnet.R2Plus1dStem,
     }
@@ -79,9 +80,9 @@ class BasicStem3D(nn.Sequential):
         self,
         in_channels=1,
         out_channels=64,
-        kernel_size=(3, 7, 7),
-        stride=(1, 2, 2),
-        padding=(1, 3, 3),
+        kernel_size=(7, 7, 7),
+        stride=(2, 2, 2),
+        padding=(3, 3, 3),
         bias=False,
     ):
         super(BasicStem3D, self).__init__(
@@ -97,6 +98,27 @@ class BasicStem3D(nn.Sequential):
             nn.ReLU(inplace=True),
         )
 
+
+class BasicStem377(BasicStem3D):
+
+    def __init__(
+        self,
+        in_channels=1,
+        out_channels=64,
+        kernel_size=(3, 7, 7),
+        stride=(2, 2, 2),
+        padding=(3, 3, 3),
+        bias=False,
+    ):
+
+        super().__init__(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=kernel_size,
+                stride=stride,
+                padding=padding,
+                bias=bias,
+            )
 
 class R2Plus1dStem(nn.Sequential):
     """R(2+1)D stem is different than the default one as it uses separated 3D convolution"""
