@@ -15,7 +15,7 @@ from util.box_ops import box_cxcywh_to_xyxy, denormalize_boxes
 from torch.utils.data import DataLoader
 from .transforms import *
 from util.misc import _is_sequence
-
+import pdb 
 
 class CropDataset(Dataset):
     """
@@ -235,26 +235,21 @@ class MOAKSDataset(DatasetBase):
         self.anns = []
         self.targets = []
         self.setting = setting
-        self.pos_weight = None if setting.endswith("moaks") else 0
 
-        assert setting in {
-            "region-tear",
-            "region-anomaly",
-            "region-moaks",
-            "meniscus-tear",
-            "meniscus-anomaly",
-            "global-tear",
-            "global-anomaly",
-        }
+        label_set, box_set, class_set = setting.split("-")
 
+        self.pos_weight = torch.zeros(5) if class_set == "moaks" else 0
+        
+        assert label_set in {"global", "meniscus", "region"}
+        assert box_set in {"none", "convex", "roi"}
+        assert class_set in {"anomaly", "tear", "moaks"}
 
         if limit is not None and limit is not False:
             if _is_sequence(limit):
                 anns = [ann for ann in anns if ann["image_id"] in limit]
             else:
                 anns = np.random.choice(np.asarray(anns), size=limit)
-
-
+            
         for ann in anns:
 
             if not all(ann["boxes"]) or len(ann["boxes"]) != 2:
@@ -278,40 +273,69 @@ class MOAKSDataset(DatasetBase):
                 ],
             ]
 
-            labels = torch.from_numpy(np.nan_to_num(np.asarray(labels).astype(float)))
+            labels = torch.from_numpy(np.nan_to_num(np.asarray(labels).astype(float), nan=1.0))
             boxes = torch.as_tensor(ann.get("boxes"))
             
-            resolution, detection = setting.split("-")
-
-            if resolution == "meniscus":
-                labels = labels.max(-1, keepdim=True).values
-            elif resolution == "global":
-                # labels maximum
+            if label_set == "global":
                 labels = labels.max().view(1, 1)
-                
+            elif label_set == "meniscus":
+                labels = labels.max(-1, keepdim=True).values
+            
+            if box_set == "convex":
                 # global box, enclosing both menisci
                 boxmin = boxes[:, :3].min(0, keepdim=True).values
                 boxmax = boxes[:, 3:].max(0, keepdim=True).values
                 boxes = torch.cat((boxmin, boxmax), -1)
 
-            if detection == "tear":
+            if class_set == "tear":
                 labels = (labels > 1).float()
-            elif detection == "anomaly":
-                labels = (labels >= 1).float()
-
-            if self.pos_weight is not None:
                 self.pos_weight += labels
+            elif class_set == "anomaly":
+                labels = (labels >= 1).float()
+                self.pos_weight += labels
+            else:
+                # healthy class
+                labels[labels == 0.0] = 0.0
 
+                # signal / anomaly class
+                labels[labels == 1.0] = 1.0
+
+                # vartical / radial tear class 
+                labels[labels == 2.0] = 2.0
+                labels[labels == 4.0] = 2.0
+                labels[labels == 5.0] = 2.0
+
+                # horizntal tear class
+                labels[labels == 3.0] = 3.0
+
+                # complex tear / maceration class
+                labels[labels >= 5.0] = 4.0
+
+                for i in torch.unique(labels.flatten().long()):
+                    self.pos_weight[i] += torch.count_nonzero(labels == i).item()
+            
             target["labels"] = labels
             target["boxes"] = boxes
 
             self.targets.append(target)
             self.anns.append(ann)
+        
+        
+        count = 1
+        if label_set == "meniscus":
+            count *= 2
+        elif label_set == "region":
+            count *= 6
 
-        if self.pos_weight is not None:
-            self.pos_weight = torch.as_tensor(
-                (len(self) - self.pos_weight) / self.pos_weight
-            )
+        if class_set != "moaks":
+            count = 1
+
+        count *= len(self)
+
+        self.pos_weight = torch.as_tensor(
+                (count - self.pos_weight) / self.pos_weight
+            ).clip(max=10)
+
 
     def __len__(self):
         return len(self.anns)

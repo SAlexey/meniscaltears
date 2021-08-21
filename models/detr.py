@@ -230,6 +230,26 @@ class DETR3d_V1(DETR3d):
         return out
 
 
+class AblatioNet(DETR3d):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        del self.bbox_embed
+
+    def forward(self, *args):
+        hs = super().forward(*args)
+
+        outputs_class = self.class_embed(hs)
+
+        if self.transformer is not None:
+            out = {"pred_logits": outputs_class[-1]}
+        else: 
+            out = {"pred_logits": outputs_class}
+        
+        return out
+
+
+
 class DETR3d_V2(DETR3d):
 
     """

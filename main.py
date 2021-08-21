@@ -38,7 +38,7 @@ from util.xai import SmoothGradientSaliency
 from util.misc import EarlyStopping, SmoothedValue
 from util.cam import to_gif
 from torch.utils.data import DataLoader
-
+import pdb
 
 REGION = {0: "anterior_horn", 1: "body", 2: "posterior_horn"}
 LAT_MED = {0: "lateral", 1: "medial"}
@@ -65,13 +65,19 @@ class MixCriterion(nn.Module):
     loss_dict = {"labels": torch.Tensor[1]}
     """
 
-    def __init__(self, **weights):
+    def __init__(self, label_set, **weights):
         super().__init__()
         self.weight = weights
-
+        self.label_set = label_set
+    
     @pick("labels")
     def loss_labels(self, out, tgt, **kwargs):
-        loss = F.binary_cross_entropy_with_logits(out, tgt, **kwargs)
+        if self.label_set == "moaks":
+            loss = F.cross_entropy_loss
+            kwargs["weight"] = kwargs.pop("pos_weight")
+        else:
+            loss = F.binary_cross_entropy_with_logits
+        loss = loss(out, tgt, **kwargs)
         return loss
 
     @pick("boxes")
@@ -228,8 +234,12 @@ def main(args):
 
     model = call(args.model)
     model.to(device)
-
     
+
+    num_params = sum(torch.prod(torch.as_tensor(p.shape)) for p in model.parameters() if p.requires_grad)
+
+    logging.info(f"Number of Parameters: {num_params}")
+
     NAMES = {
         "global": ("anywhere", ),
         "meniscus": ("lateral", "medial"),
@@ -397,13 +407,13 @@ def main(args):
 
     # start training
     logging.info(f"Epoch {start}; Best Validation Loss {best_val_loss:.4f}")
+    logging.info(f"Positive weight: {train_data.pos_weight}")
     logging.info(f"Starting training")
     for epoch in range(start, epochs):
 
         pos_weight = loader_train.dataset.pos_weight
         if isinstance(pos_weight, torch.Tensor):
             pos_weight = pos_weight.to(device)
-
         train_results = train(
             model,
             loader_train,
