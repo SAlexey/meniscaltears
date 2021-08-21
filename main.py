@@ -6,6 +6,7 @@ from typing import Dict
 import warnings
 
 from matplotlib import pyplot as plt
+from torch.nn.modules import activation
 from util.eval_utils import (
     balanced_accuracy_score,
     confusion_matrix,
@@ -16,7 +17,7 @@ from util.eval_utils import (
 )
 
 from engine import evaluate, train
-import json
+from argparse import Namespace
 import logging
 import random
 import hydra
@@ -31,10 +32,11 @@ from util.box_ops import (
     denormalize_boxes,
     generalized_box_iou,
 )
-from einops import rearrange, parse_shape
+from einops.layers.torch import Rearrange
 import sys
 from util.xai import SmoothGradientSaliency
 from util.misc import EarlyStopping, SmoothedValue
+from util.cam import to_gif
 from torch.utils.data import DataLoader
 
 
@@ -122,35 +124,52 @@ class MixCriterion(nn.Module):
 class Postprocess(nn.Module):
     def __init__(self, cfg):
         super().__init__()
-        self.attention = cfg.model.transformer is not None
-        res, _ = cfg.data.setting.split("-")
+        _, _, class_set = cfg.data.setting.split("-")
+        
+        labels_axes = {
+            "query": cfg.model.num_queries,
+            "class": cfg.model.num_classes,
+        }
 
-        # self.labels = "obj cls" if res in ("region", "meniscus") else "cls"
+        coords_axes = {
+            "query": cfg.model.num_queries,
+            "box": 6
+        }
+        moaks = class_set == "moaks"
+        
+        if cfg.model.transformer is None:
+            labels = f"bs (query class) -> bs query class"
+            coords = f"bs (query box) -> bs query box"
+        else:
+            if moaks:
+                labels = f"bs query (moaks class) -> bs class query moaks"
+            else:
+                labels = f"bs query class -> bs query class"
+            coords = f"bs query box -> bs query box"
+
+        self.labels = nn.Sequential(
+            Rearrange(labels, **labels_axes),
+            nn.Softmax(dim=1) if moaks else nn.Identity()
+        )
+
+        self.boxes = nn.Sequential(
+            Rearrange(coords, **coords_axes),
+            nn.Sigmoid()
+        )
+    
 
     def forward(
         self, output: Dict[str, torch.Tensor], target: Dict[str, torch.Tensor], **kwargs
     ):
-        if "pred_logits" in output:
-            labels = output["pred_logits"]
-        else:
-            labels = output["labels"]
-
-        if "pred_boxes" in output:
-            boxes = output["pred_boxes"]
-        else:
-            boxes = output["boxes"]
-
-        if not self.attention:
-            shape = parse_shape(target["labels"], f"bs obj cls")
-            labels = rearrange(
-                labels, f"bs (obj cls) -> bs obj cls", **shape
-            )
-            boxes = rearrange(boxes, "bs (obj box) -> bs obj box", box=6)
-
-        output["labels"] = labels
-        output["boxes"] = boxes
-
+        if "labels" in output:
+            output["labels"] = self.labels(output["labels"])
+        if "boxes" in output:
+            output["boxes"] = self.boxes(output["boxes"])
         return output
+
+
+
+#%%
 
 
 def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
@@ -204,6 +223,9 @@ def main(args):
     device = torch.device(args.device)
     logging.info(f"Running On Device: {device}")
 
+    if args.data.setting.endswith("moaks"):
+        assert args.model.transformer is not None, "MOAKS works only for transformers!"
+
     model = call(args.model)
     model.to(device)
 
@@ -250,13 +272,73 @@ def main(args):
         if args.cam:
             assert args.batch_size == 1, "Only batch size 1 is supported!"    
             logging.info(f"Obtaining GradCAM")
+
+            
             for input, target in loader:
+                conv_features, enc_attn_weights, dec_attn_weights = [], [], []
+
+                hooks = [
+                    model.backbone[-2].register_forward_hook(
+                        lambda self, input, output: conv_features.append(output)
+                    ),
+                    model.transformer.encoder.layers[-1].self_attn.register_forward_hook(
+                        lambda self, input, output: enc_attn_weights.append(output[1])
+                    ),
+                    model.transformer.decoder.layers[-1].multihead_attn.register_forward_hook(
+                        lambda self, input, output: dec_attn_weights.append(output[1])
+                    ),
+                ]
+
+                outputs = model(input)
+                print("o", outputs)
+                print("t", target)
+
+                for hook in hooks:
+                    hook.remove()
+
                 image_id = target['image_id'].squeeze().item()
-                logging.info(f"Image id: {image_id}; labels={target['labels'].flatten()}")
-                index = (0, 0, ...)
-                name = f"{image_id}_global"
-                sg_sal(input, index, save_as=name, num_passes=20, target=target)
-                        
+
+                # don't need the list anymore
+                conv_features = conv_features[-1]
+                enc_attn_weights = enc_attn_weights[-1]
+                dec_attn_weights = dec_attn_weights[-1]
+                d, h, w = conv_features[0].tensors.shape[-3:]
+
+                fig, ax = plt.subplots(figsize=(10, 10))
+
+                dec_attn_weights = dec_attn_weights.view(1, 1, d,h,w).detach()
+
+                # 5 points where decoder attention is max
+                sattn = enc_attn_weights.reshape((d, h, w, d, h, w))
+
+
+                attention = []
+                attention.append(sattn[..., 4, 4, 4])
+                attention.append(sattn[..., 8, 4, 4])
+
+                attention = torch.stack(attention).mean(0).detach().view(1, 1, 10, 10, 10)
+                print(attention.shape)
+
+
+                dec_attn_weights = F.interpolate(dec_attn_weights, input.size()[-3:], mode="trilinear")
+                enc_attn_weights = F.interpolate(attention, input.size()[-3:], mode="trilinear")
+                
+                ax.imshow(dec_attn_weights[0, 0, 40])
+                ax.axis('off')
+                ax.set_title(f'query id: {1}')
+
+                to_gif(input.detach().squeeze(), dec_attn_weights.squeeze(),f"/scratch/visual/ashestak/meniscaltears/attention/dec_attention_{image_id}.gif")
+                to_gif(input.detach().squeeze(), enc_attn_weights.squeeze(),f"/scratch/visual/ashestak/meniscaltears/attention/enc_attention_{image_id}.gif")
+
+                
+                # logging.info(f"Image id: {image_id}; labels={target['labels'].flatten()}")
+                # index = (0, 0, ...)
+                # name = f"{image_id}_global"
+                # sg_sal(input, index, save_as=name, num_passes=20, target=target)
+
+            
+
+
         torch.save(test_results, "test_results.pt")
         logging.info("Testing finished, exitting")
         sys.exit(0)
@@ -291,7 +373,8 @@ def main(args):
     start = state["start"]
     best_val_loss = state["best_val_loss"]
 
-    tracker = EarlyStopping(name="val_loss", patience=15, warmup=10)
+    
+    tracker = EarlyStopping(name="val_loss", patience=args.early_stop.patience, warmup=args.early_stop.warmup)
 
     criterion = MixCriterion(**args.weights)
     criterion.to(device)
