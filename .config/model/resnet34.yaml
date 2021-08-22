@@ -25,5 +25,5 @@ backbone:
 
   position_embedding:
     _target_: models.position_encoding.PositionEmbeddingSine3d
-    hidden_dim: 48 # <- placeholder value
+    hidden_dim: 144  #d_model // 3
     normalize: True
