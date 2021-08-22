@@ -12,6 +12,9 @@ early_stop:
   patience: 20
   warmup: 50
 
+data:
+  setting: region-roi-moaks
+
 # TESTING
 eval: false # only run evaluation (uses test set)
 cam: true # run grad cam for menisci (ignored if eval is false)
@@ -33,9 +36,9 @@ weights:
 # TRAINING SETTINGS & HPARAMS
 num_epochs: 300
 batch_size: 4
-num_workers: 6
-lr: 0.0001 # default learning rate
-lr_backbone: 0.0005 # cnn learning rate
-lr_drop_step: 30
+num_workers: 4
+lr: 0.00001 # default learning rate
+lr_backbone: 0.0001 # cnn learning rate
+lr_drop_step: 50
 lr_drop_rate: 0.5
 window: 20
