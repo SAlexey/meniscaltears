@@ -65,14 +65,14 @@ class MixCriterion(nn.Module):
     loss_dict = {"labels": torch.Tensor[1]}
     """
 
-    def __init__(self, label_set, **weights):
+    def __init__(self, args):
         super().__init__()
-        self.weight = weights
-        self.label_set = label_set
+        self.weight = args.weights
+        self.moaks = args.data.setting.split("-")[-1] == "moaks"
     
     @pick("labels")
     def loss_labels(self, out, tgt, **kwargs):
-        if self.label_set == "moaks":
+        if self.moaks:
             loss = F.cross_entropy_loss
             kwargs["weight"] = kwargs.pop("pos_weight")
         else:
@@ -386,7 +386,7 @@ def main(args):
     
     tracker = EarlyStopping(name="val_loss", patience=args.early_stop.patience, warmup=args.early_stop.warmup)
 
-    criterion = MixCriterion(**args.weights)
+    criterion = MixCriterion(args)
     criterion.to(device)
 
 

@@ -334,7 +334,11 @@ class MOAKSDataset(DatasetBase):
 
         self.pos_weight = torch.as_tensor(
                 (count - self.pos_weight) / self.pos_weight
-            ).clip(max=10)
+            )
+
+        self.pos_weight = self.pos_weight.clip(self.pos_weight.mean())
+
+        
 
 
     def __len__(self):

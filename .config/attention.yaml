@@ -1,0 +1,36 @@
+defaults:
+  - model: resnet18_detr
+  - data: oai
+
+# MODEL
+device: cuda
+checkpoint: false # path to the checkpoint
+state_dict: outputs/detr18/global_tear/global_tear/best_model.pt
+backbone_only: false
+batch_size: 1
+num_workers: 2
+
+# TESTING
+eval: True # only run evaluation (uses test set)
+cam: True # run grad cam for menisci (ignored if eval is false)
+metrics: []
+data:
+  limit_test_items: # list of image ids or N to slice anns[:N]
+    - 10098612
+    - 10350429
+    - 10207312
+    - 10050303
+    - 10296112
+    - 10935412
+    - 10038803
+    - 10326814
+    - 10564712
+    - 10899806
+    - 10870609
+    - 10174012
+    - 10563012
+    - 10929703
+    - 10723813
+
+weights: 
+  labels: 1
