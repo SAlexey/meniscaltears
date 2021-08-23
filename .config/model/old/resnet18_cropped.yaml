@@ -1,7 +1,0 @@
-_target_: models.resnet.ClsNet3D
-backbone: resnet18_3d
-dropout: 0.5
-cls_output_dim: 6
-cls_hidden_dim: 2048
-cls_num_layers: 3
-cls_dropout: 0.5

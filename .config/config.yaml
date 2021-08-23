@@ -12,8 +12,6 @@ early_stop:
   patience: 20
   warmup: 50
 
-data:
-  setting: region-roi-moaks
 
 # TESTING
 eval: false # only run evaluation (uses test set)
