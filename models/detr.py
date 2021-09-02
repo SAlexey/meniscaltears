@@ -124,7 +124,7 @@ class DETR2p1d_Pos(DETR):
 
 class DETR3d(DETR):
     def __init__(
-        self, num_classes, num_queries, backbone=None, transformer=None, aux_loss=False
+        self, num_classes, num_queries, num_labels, num_coords, backbone=None, transformer=None, aux_loss=False
     ):
         """Initializes the model.
         Parameters:
@@ -143,23 +143,25 @@ class DETR3d(DETR):
             aux_loss=aux_loss,
         )
 
-        num_channels = self.backbone.num_channels        
-        num_coordinates = 6
-        
+        out_cls = num_classes * num_labels 
+        out_box = num_coords
+
+        num_channels = self.backbone.num_channels
 
         if transformer is None:
+            out_cls *= num_queries
+            out_box *= num_queries
             hidden_dim = num_channels
-            num_classes *= num_queries
-            num_coordinates *= num_queries
+            
+            del self.query_embed 
             self.input_proj = nn.Identity()
-            del self.query_embed
 
         else:
-            hidden_dim = transformer.d_model    
+            hidden_dim = self.transformer.d_model
             self.input_proj = nn.Conv3d(num_channels, hidden_dim, kernel_size=1)
 
-        self.class_embed = nn.Linear(hidden_dim, num_classes)
-        self.bbox_embed = MLP(hidden_dim, hidden_dim, num_coordinates, 3)
+        self.class_embed = nn.Linear(hidden_dim, out_cls)
+        self.bbox_embed = MLP(hidden_dim, hidden_dim, out_box, 3)
 
     def forward(self, samples: NestedTensor):
         """The forward expects a NestedTensor, which consists of:

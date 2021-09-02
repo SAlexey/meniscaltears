@@ -1,5 +1,5 @@
 defaults:
-  - model: resnet34 #_detr
+  - model: tranformer #_detr
   - data: oai
 
 # MODEL
@@ -7,6 +7,9 @@ device: cuda
 checkpoint: false # path to the checkpoint
 state_dict: false #outputs/resnet18_global_anomaly/best_model.pt
 backbone_only: true  # false
+
+data:
+  setting: region-roi-moaks
 
 early_stop:
   patience: 20

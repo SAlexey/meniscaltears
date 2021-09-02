@@ -73,8 +73,9 @@ class MixCriterion(nn.Module):
     @pick("labels")
     def loss_labels(self, out, tgt, **kwargs):
         if self.moaks:
-            loss = F.cross_entropy_loss
+            loss = F.cross_entropy
             kwargs["weight"] = kwargs.pop("pos_weight")
+        
         else:
             loss = F.binary_cross_entropy_with_logits
         loss = loss(out, tgt, **kwargs)
@@ -127,42 +128,19 @@ class MixCriterion(nn.Module):
 # WARNING: NO SIGMOID IN POSTPROCESS FOR LABELS
 # THEY WILL BE ACTIVATED IN EVALIATION [enpgine.py]
 # AFTER BCEWithLogitsLoss HAS DONE ITS THING
-class Postprocess(nn.Module):
-    def __init__(self, cfg):
+
+class PostprocessBase(nn.Module):
+
+
+    def __init__(self, data_setting, num_queries, num_classes, num_labels, num_coords):
         super().__init__()
-        _, _, class_set = cfg.data.setting.split("-")
-        
-        labels_axes = {
-            "query": cfg.model.num_queries,
-            "class": cfg.model.num_classes,
-        }
+        self.data_setting = data_setting
+        self.labels = nn.Identity()
+        self.coords = nn.Identity()
 
-        coords_axes = {
-            "query": cfg.model.num_queries,
-            "box": 6
-        }
-        moaks = class_set == "moaks"
-        
-        if cfg.model.transformer is None:
-            labels = f"bs (query class) -> bs query class"
-            coords = f"bs (query box) -> bs query box"
-        else:
-            if moaks:
-                labels = f"bs query (moaks class) -> bs class query moaks"
-            else:
-                labels = f"bs query class -> bs query class"
-            coords = f"bs query box -> bs query box"
+    def get_config_from_data_setting(self):
+        raise NotImplementedError
 
-        self.labels = nn.Sequential(
-            Rearrange(labels, **labels_axes),
-            nn.Softmax(dim=1) if moaks else nn.Identity()
-        )
-
-        self.boxes = nn.Sequential(
-            Rearrange(coords, **coords_axes),
-            nn.Sigmoid()
-        )
-    
 
     def forward(
         self, output: Dict[str, torch.Tensor], target: Dict[str, torch.Tensor], **kwargs
@@ -170,9 +148,69 @@ class Postprocess(nn.Module):
         if "labels" in output:
             output["labels"] = self.labels(output["labels"])
         if "boxes" in output:
-            output["boxes"] = self.boxes(output["boxes"])
+            output["boxes"] = self.coords(output["boxes"])
         return output
 
+
+class PostprocessResNet(PostprocessBase):
+    def __init__(self, data_setting, num_queries, num_classes, num_labels, num_coords):
+        super().__init__(data_setting, num_queries, num_classes, num_labels, num_coords)
+        
+        label_set, coord_set, class_set = data_setting.split("-")
+        
+        to_probas = nn.Identity() 
+        axes_lengths = {"menisci": 2, "labels": 1}
+        pattern = "bs (menisci labels) -> bs menisci labels"
+
+        if label_set == "meniscus":
+            axes_lengths["labels"] = 2
+        elif label_set == "region":
+            axes_lengths["labels"] = 3
+
+        if class_set == "moaks":
+            to_probas =  nn.Softmax(dim=1)
+            axes_lengths["moaks"] = 5
+            pattern = "bs (moaks menisci labels) -> bs moaks menisci labels"
+
+        self.labels = nn.Sequential(
+            Rearrange(pattern, **axes_lengths),
+            to_probas
+        )
+
+        axes_lengths = {"menisci": 2, "coords": 6}
+
+        if coord_set == "convex":
+            axes_lengths["menisci"] = 1
+
+        self.coords = nn.Sequential(
+            Rearrange("bs (menisci coords) -> bs menisci coords", **axes_lengths),
+            nn.Sigmoid()
+        )
+        
+
+class PostprocessTransformer(PostprocessBase):
+    def __init__(self, data_setting, num_queries, num_classes, num_labels, num_coords):
+        super().__init__(data_setting, num_queries, num_classes, num_labels, num_coords)
+
+        _, _, class_set = data_setting.split("-")
+
+        probas = nn.Identity()
+        labels = "bs num_queries (num_classes num_labels) -> bs num_queries (num_classes num_labels)"
+
+        if class_set == "moaks": 
+            assert num_classes == 5
+            probas = nn.Softmax(dim=1)
+            labels = "bs num_queries (num_classes num_labels) -> bs num_classes num_queries num_labels"
+
+
+        self.labels = nn.Sequential(
+            Rearrange(labels, num_classes=num_classes, num_labels=num_labels, num_queries=num_queries),
+            probas
+        )
+
+        self.coords = nn.Sequential(
+            nn.Sigmoid()
+        )
 
 
 #%%
@@ -259,10 +297,8 @@ def main(args):
     
     logging.info(f"Running: {model}")
 
-    postprocess = Postprocess(args)
-    # WARNING: NO SIGMOID IN POSTPROCESS FOR LABELS
-    # THEY WILL BE ACTIVATED IN EVALIATION [enpgine.py]
-    # AFTER BCEWithLogitsLoss HAS DONE ITS THING
+    postprocess = (PostprocessResNet if model.transformer is None else PostprocessTransformer)(args.data.setting, args.model.num_queries, args.model.num_classes, args.model.num_labels, args.model.num_coords)
+    
 
     # smooth saliency maps
     sg_sal = SmoothGradientSaliency(model, postprocess=postprocess, vanilla=True)
@@ -405,6 +441,7 @@ def main(args):
         num_workers=args.num_workers,
     )
 
+        
     # start training
     logging.info(f"Epoch {start}; Best Validation Loss {best_val_loss:.4f}")
     logging.info(f"Positive weight: {train_data.pos_weight}")

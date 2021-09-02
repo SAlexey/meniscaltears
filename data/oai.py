@@ -313,6 +313,8 @@ class MOAKSDataset(DatasetBase):
 
                 for i in torch.unique(labels.flatten().long()):
                     self.pos_weight[i] += torch.count_nonzero(labels == i).item()
+
+                labels = labels.long()
                 
             
             target["labels"] = labels

@@ -3,7 +3,7 @@ data_dir: oai/v00/data/inputs
 anns_dir: meniscaltears/data
 isotrope: false
 
-setting: "meniscus-anomaly" # region-tear, region-anomaly, region-moaks, meniscus-tear, meniscus-anomaly, global-tear, global-anomaly
+setting: "region-roi-tear" # region-tear, region-anomaly, region-moaks, meniscus-tear, meniscus-anomaly, global-tear, global-anomaly
 limit_train_items: false # will take up to N examples
 limit_val_items: false # will take up to N examples
 limit_test_items: false # will take up to N examples
