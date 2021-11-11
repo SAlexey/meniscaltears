@@ -205,6 +205,10 @@ def main(args):
     logging.info(f"Running On Device: {device}")
 
     model = call(args.model)
+
+    print(sum(torch.prod(torch.as_tensor(p.shape)) for p in model.parameters() if p.requires_grad))
+    quit()
+
     model.to(device)
 
     
@@ -301,7 +305,6 @@ def main(args):
 
     criterion = MixCriterion(**args.weights)
     criterion.to(device)
-
 
     train_data, val_data = data
 

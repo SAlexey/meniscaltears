@@ -1,5 +1,5 @@
 defaults:
-  - model: detr_3d
+  - model: resnet18_detr
   - data: oai
 
 # MODEL
