@@ -1,12 +1,20 @@
 defaults:
-  - model: resnet18_detr
+  - model: tranformer #_detr
   - data: oai
 
 # MODEL
 device: cuda
 checkpoint: false # path to the checkpoint
-state_dict: false
-backbone_only: false
+state_dict: false #outputs/resnet18_global_anomaly/best_model.pt
+backbone_only: true  # false
+
+data:
+  setting: region-roi-moaks
+
+early_stop:
+  patience: 20
+  warmup: 50
+
 
 # TESTING
 eval: false # only run evaluation (uses test set)
@@ -24,14 +32,14 @@ weights:
   labels: 1
   boxes: 5
   giou: 2
-  inter: 0.7
+    #  inter: 0.7
 
 # TRAINING SETTINGS & HPARAMS
 num_epochs: 300
-batch_size: 2
+batch_size: 4
 num_workers: 4
-lr: 0.0001 # default learning rate
-lr_backbone: 0.0005 # cnn learning rate
+lr: 0.00001 # default learning rate
+lr_backbone: 0.0001 # cnn learning rate
 lr_drop_step: 50
 lr_drop_rate: 0.5
 window: 20

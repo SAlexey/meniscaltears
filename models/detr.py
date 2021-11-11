@@ -124,7 +124,7 @@ class DETR2p1d_Pos(DETR):
 
 class DETR3d(DETR):
     def __init__(
-        self, num_classes, num_queries, backbone=None, transformer=None, aux_loss=False
+        self, num_classes, num_queries, num_labels, num_coords, backbone=None, transformer=None, aux_loss=False
     ):
         """Initializes the model.
         Parameters:
@@ -143,23 +143,25 @@ class DETR3d(DETR):
             aux_loss=aux_loss,
         )
 
-        num_channels = self.backbone.num_channels        
-        num_coordinates = 6
-        
+        out_cls = num_classes * num_labels 
+        out_box = num_coords
+
+        num_channels = self.backbone.num_channels
 
         if transformer is None:
+            out_cls *= num_queries
+            out_box *= num_queries
             hidden_dim = num_channels
-            num_classes *= num_queries
-            num_coordinates *= num_queries
+            
+            del self.query_embed 
             self.input_proj = nn.Identity()
-            del self.query_embed
 
         else:
-            hidden_dim = transformer.d_model    
+            hidden_dim = self.transformer.d_model
             self.input_proj = nn.Conv3d(num_channels, hidden_dim, kernel_size=1)
 
-        self.class_embed = nn.Linear(hidden_dim, num_classes)
-        self.bbox_embed = MLP(hidden_dim, hidden_dim, num_coordinates, 3)
+        self.class_embed = nn.Linear(hidden_dim, out_cls)
+        self.bbox_embed = MLP(hidden_dim, hidden_dim, out_box, 3)
 
     def forward(self, samples: NestedTensor):
         """The forward expects a NestedTensor, which consists of:
@@ -212,17 +214,42 @@ class DETR3d_V1(DETR3d):
         """
         hs = super().forward(samples)
 
-        outputs_class = self.class_embed(hs)
-        outputs_coord = self.bbox_embed(hs).sigmoid()
+        labels = self.class_embed(hs)
+        coords = self.bbox_embed(hs)
+
+        out = {}
+
+        if self.aux_loss:
+            out["aux"] = self._set_aux_loss(labels, coords)  
 
         if self.transformer is not None:
-            out = {"pred_logits": outputs_class[-1], "pred_boxes": outputs_coord[-1]}
-            if self.aux_loss:
-                out["aux"] = self._set_aux_loss(outputs_class, outputs_coord)
+            labels = labels[-1]
+            coords = coords[-1]
+        
+        out["labels"] = labels
+        out["boxes"] = coords
+            
+        return out
+
+
+class AblatioNet(DETR3d):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        del self.bbox_embed
+
+    def forward(self, *args):
+        hs = super().forward(*args)
+
+        outputs_class = self.class_embed(hs)
+
+        if self.transformer is not None:
+            out = {"pred_logits": outputs_class[-1]}
         else: 
-            out = {"pred_logits": outputs_class, "pred_boxes": outputs_coord}
+            out = {"pred_logits": outputs_class}
         
         return out
+
 
 
 class DETR3d_V2(DETR3d):
@@ -255,10 +282,13 @@ class DETR3d_V2(DETR3d):
         hs = torch.stack((m1, m2), dim=-2)
 
         outputs_class = self.class_embed(hs)
-        outputs_coord = self.bbox_embed(hs).sigmoid()
-        out = {"pred_logits": outputs_class[-1], "pred_boxes": outputs_coord[-1]}
+        outputs_coord = self.bbox_embed(hs)
+        
+        out = {"labels": outputs_class[-1], "boxes": outputs_coord[-1]}
+        
         if self.aux_loss:
             out["aux"] = self._set_aux_loss(outputs_class, outputs_coord)
+        
         return out
 
 

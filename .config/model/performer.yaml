@@ -1,18 +1,16 @@
 _target_: models.detr.DETR3d_V1
-num_classes: 1
+num_classes: 2
 num_queries: 2
-num_labels: 3
-num_coords: 6
 aux_loss: false
 transformer:
-  _target_: models.transformer.Transformer
+  _target_: models.transformer.Performer
   nhead: 8
-  activation: "gelu"
-  num_encoder_layers: 4
-  num_decoder_layers: 4
-  dim_feedforward: 512
+  activation: "relu"
+  num_encoder_layers: 6
+  num_decoder_layers: 6
+  dim_feedforward: 2048
   # 264, 288, 312, 336, 360, 384, 408, 432, 456, 480, 504, 528, 552, 576, 600, 624, 648, 672, 696, 720, 744, 768, 792, 816, 840, 864, 888, 912, 936, 960, 984, 1008
-  d_model: 288 # divisible by 2 (pos enc. 2d); 3 (pos.enc 3d) and 8 (num heads)
+  d_model: 264 # divisible by 2 (pos enc. 2d); 3 (pos.enc 3d) and 8 (num heads)
   dropout: 0.1
   normalize_before: false
   return_intermediate_dec: false
@@ -21,11 +19,11 @@ backbone:
   _target_: models.backbone.Joiner
   backbone:
     _target_: models.backbone.Backbone
-    num_channels: 256 # layer 3 = 256 layer 4 = 512 
+    num_channels: 512
     backbone:
       _target_: torchvision.models._utils.IntermediateLayerGetter
       return_layers:
-        layer3: 0
+        layer4: 0
       model:
         _target_: models.resnet.ResNet3D
         stem:
@@ -34,7 +32,16 @@ backbone:
         block:
           _target_: models.resnet.block
           name: basic_res
-        layers: [1, 1, 1, 1]
+        layers: [3, 4, 6, 3]
+        # conv_makers:
+        #   - _target_: models.resnet.conv
+        #     name: 2plus1d
+        #   - _target_: models.resnet.conv
+        #     name: 2plus1d
+        #   - _target_: models.resnet.conv
+        #     name: 2plus1d
+        #   - _target_: models.resnet.conv
+        #     name: 2plus1d
 
   position_embedding:
     _target_: models.position_encoding.PositionEmbeddingSine3d

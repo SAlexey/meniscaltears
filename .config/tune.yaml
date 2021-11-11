@@ -1,35 +1,36 @@
 defaults:
-  - model: detr_3d
+  - model: resnet18_detr 
   - data: oai
   - override hydra/sweeper: ax
 
 # MODEL
 device: cuda
 checkpoint: false # path to the checkpoint
-state_dict: false # /scratch/htc/ashestak/meniscaltears/outputs/detr18_global_anomaly/best_model
+state_dict: /scratch/htc/ashestak/meniscaltears/outputs/detr18/sweep/9/best_model.pt
 backbone_only: true
 
 data:
-  setting: global-anomaly
+  setting: region-tear
+  limit_train_items: 400
 
 model:
-  num_classes: 1 # global = 1; region = 3;
-  num_queries: 1 # global = 1; meniscus = 2; 
+  num_classes: 3 # global = 1; region = 3;
+  num_queries: 2 # global = 1; meniscus = 2; 
   transformer: 
     nhead: ?? #8
-    activation: ?? # "relu"
+    activation: gelu # "relu"
     num_encoder_layers: ?? # 6
     num_decoder_layers: ?? # 6
     dim_feedforward: ?? # 2048
     dropout: ?? #0.1
 
 # TRAINING SETTINGS & HPARAMS
-num_epochs: 50
-batch_size: 4
+num_epochs: 60
+batch_size: 3
 num_workers: 6
 lr: ?? # default learning rate
-lr_backbone: 0.00001 # cnn learning rate
-lr_drop_step: 10
+lr_backbone: 0.000005 # cnn learning rate
+lr_drop_step: 15
 lr_drop_rate: 0.75
 window: 20
 
@@ -39,34 +40,31 @@ hydra:
     ax_config:
 
       # max_trials is application-specific. Tune it for your use case
-      max_trials: 30
+      max_trials: 15
 
       experiment:
         # Default to minimize, set to false to maximize
         minimize: true
 
       params:
-        model.transformer.activation:
-          type: choice
-          values: ["relu", "gelu"]
+        lr: 
+          type: range
+          bounds: [0.0001, 0.0005]
         model.transformer.nhead:
           type: choice
-          values: [2, 4, 8]
+          values: [2, 4, 6]
         model.transformer.num_encoder_layers:
           type: range
-          bounds: [2, 8]
+          bounds: [2, 6]
         model.transformer.num_decoder_layers:
           type: range
-          bounds: [2, 8]
+          bounds: [2, 6]
         model.transformer.dim_feedforward:
           type: choice
-          values: [1024, 2048]
+          values: [256, 512, 1024]
         model.transformer.dropout:
-          type: choice
-          values: [0.0, 0.1, 0.25, 0.50, 0.70]
-        lr:
-          type: choice 
-          values: [0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00005]
+          type: range
+          bounds: [0.0, 0.3]
 
 # TESTING
 eval: false # only run evaluation (uses test set)

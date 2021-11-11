@@ -6,6 +6,7 @@ from typing import Dict
 import warnings
 
 from matplotlib import pyplot as plt
+from torch.nn.modules import activation
 from util.eval_utils import (
     balanced_accuracy_score,
     confusion_matrix,
@@ -16,7 +17,7 @@ from util.eval_utils import (
 )
 
 from engine import evaluate, train
-import json
+from argparse import Namespace
 import logging
 import random
 import hydra
@@ -31,12 +32,13 @@ from util.box_ops import (
     denormalize_boxes,
     generalized_box_iou,
 )
-from einops import rearrange, parse_shape
+from einops.layers.torch import Rearrange
 import sys
 from util.xai import SmoothGradientSaliency
 from util.misc import EarlyStopping, SmoothedValue
+from util.cam import to_gif
 from torch.utils.data import DataLoader
-
+import pdb
 
 REGION = {0: "anterior_horn", 1: "body", 2: "posterior_horn"}
 LAT_MED = {0: "lateral", 1: "medial"}
@@ -63,13 +65,20 @@ class MixCriterion(nn.Module):
     loss_dict = {"labels": torch.Tensor[1]}
     """
 
-    def __init__(self, **weights):
+    def __init__(self, args):
         super().__init__()
-        self.weight = weights
-
+        self.weight = args.weights
+        self.moaks = args.data.setting.split("-")[-1] == "moaks"
+    
     @pick("labels")
     def loss_labels(self, out, tgt, **kwargs):
-        loss = F.binary_cross_entropy_with_logits(out, tgt, **kwargs)
+        if self.moaks:
+            loss = F.cross_entropy
+            kwargs["weight"] = kwargs.pop("pos_weight")
+        
+        else:
+            loss = F.binary_cross_entropy_with_logits
+        loss = loss(out, tgt, **kwargs)
         return loss
 
     @pick("boxes")
@@ -119,38 +128,92 @@ class MixCriterion(nn.Module):
 # WARNING: NO SIGMOID IN POSTPROCESS FOR LABELS
 # THEY WILL BE ACTIVATED IN EVALIATION [enpgine.py]
 # AFTER BCEWithLogitsLoss HAS DONE ITS THING
-class Postprocess(nn.Module):
-    def __init__(self, cfg):
-        super().__init__()
-        self.attention = cfg.model.transformer is not None
-        res, _ = cfg.data.setting.split("-")
 
-        # self.labels = "obj cls" if res in ("region", "meniscus") else "cls"
+class PostprocessBase(nn.Module):
+
+
+    def __init__(self, data_setting, num_queries, num_classes, num_labels, num_coords):
+        super().__init__()
+        self.data_setting = data_setting
+        self.labels = nn.Identity()
+        self.coords = nn.Identity()
+
+    def get_config_from_data_setting(self):
+        raise NotImplementedError
+
 
     def forward(
         self, output: Dict[str, torch.Tensor], target: Dict[str, torch.Tensor], **kwargs
     ):
-        if "pred_logits" in output:
-            labels = output["pred_logits"]
-        else:
-            labels = output["labels"]
-
-        if "pred_boxes" in output:
-            boxes = output["pred_boxes"]
-        else:
-            boxes = output["boxes"]
-
-        if not self.attention:
-            shape = parse_shape(target["labels"], f"bs obj cls")
-            labels = rearrange(
-                labels, f"bs (obj cls) -> bs obj cls", **shape
-            )
-            boxes = rearrange(boxes, "bs (obj box) -> bs obj box", box=6)
-
-        output["labels"] = labels
-        output["boxes"] = boxes
-
+        if "labels" in output:
+            output["labels"] = self.labels(output["labels"])
+        if "boxes" in output:
+            output["boxes"] = self.coords(output["boxes"])
         return output
+
+
+class PostprocessResNet(PostprocessBase):
+    def __init__(self, data_setting, num_queries, num_classes, num_labels, num_coords):
+        super().__init__(data_setting, num_queries, num_classes, num_labels, num_coords)
+        
+        label_set, coord_set, class_set = data_setting.split("-")
+        
+        to_probas = nn.Identity() 
+        axes_lengths = {"menisci": 2, "labels": 1}
+        pattern = "bs (menisci labels) -> bs menisci labels"
+
+        if label_set == "meniscus":
+            axes_lengths["labels"] = 2
+        elif label_set == "region":
+            axes_lengths["labels"] = 3
+
+        if class_set == "moaks":
+            to_probas =  nn.Softmax(dim=1)
+            axes_lengths["moaks"] = 5
+            pattern = "bs (moaks menisci labels) -> bs moaks menisci labels"
+
+        self.labels = nn.Sequential(
+            Rearrange(pattern, **axes_lengths),
+            to_probas
+        )
+
+        axes_lengths = {"menisci": 2, "coords": 6}
+
+        if coord_set == "convex":
+            axes_lengths["menisci"] = 1
+
+        self.coords = nn.Sequential(
+            Rearrange("bs (menisci coords) -> bs menisci coords", **axes_lengths),
+            nn.Sigmoid()
+        )
+        
+
+class PostprocessTransformer(PostprocessBase):
+    def __init__(self, data_setting, num_queries, num_classes, num_labels, num_coords):
+        super().__init__(data_setting, num_queries, num_classes, num_labels, num_coords)
+
+        _, _, class_set = data_setting.split("-")
+
+        probas = nn.Identity()
+        labels = "bs num_queries (num_classes num_labels) -> bs num_queries (num_classes num_labels)"
+
+        if class_set == "moaks": 
+            assert num_classes == 5
+            probas = nn.Softmax(dim=1)
+            labels = "bs num_queries (num_classes num_labels) -> bs num_classes num_queries num_labels"
+
+
+        self.labels = nn.Sequential(
+            Rearrange(labels, num_classes=num_classes, num_labels=num_labels, num_queries=num_queries),
+            probas
+        )
+
+        self.coords = nn.Sequential(
+            nn.Sigmoid()
+        )
+
+
+#%%
 
 
 def _load_state(args, model, optimizer=None, scheduler=None, **kwargs):
@@ -204,14 +267,21 @@ def main(args):
     device = torch.device(args.device)
     logging.info(f"Running On Device: {device}")
 
+    if args.data.setting.endswith("moaks"):
+        assert args.model.transformer is not None, "MOAKS works only for transformers!"
+
     model = call(args.model)
 
     print(sum(torch.prod(torch.as_tensor(p.shape)) for p in model.parameters() if p.requires_grad))
     quit()
 
     model.to(device)
-
     
+
+    num_params = sum(torch.prod(torch.as_tensor(p.shape)) for p in model.parameters() if p.requires_grad)
+
+    logging.info(f"Number of Parameters: {num_params}")
+
     NAMES = {
         "global": ("anywhere", ),
         "meniscus": ("lateral", "medial"),
@@ -231,17 +301,15 @@ def main(args):
     
     logging.info(f"Running: {model}")
 
-    postprocess = Postprocess(args)
-    # WARNING: NO SIGMOID IN POSTPROCESS FOR LABELS
-    # THEY WILL BE ACTIVATED IN EVALIATION [enpgine.py]
-    # AFTER BCEWithLogitsLoss HAS DONE ITS THING
+    postprocess = (PostprocessResNet if model.transformer is None else PostprocessTransformer)(args.data.setting, args.model.num_queries, args.model.num_classes, args.model.num_labels, args.model.num_coords)
+    
 
     # smooth saliency maps
     sg_sal = SmoothGradientSaliency(model, postprocess=postprocess, vanilla=True)
-
     data = call(args.data, train=not args.eval)
 
     if args.eval:
+        _load_state(args, model)
         loader = DataLoader(data, batch_size=args.batch_size)
         logging.info("Running evaluation on the test set")
         test_results = evaluate(
@@ -252,21 +320,75 @@ def main(args):
             logging.info(f"Test AUC: {test_results['roc_auc_score']}")
 
         if args.cam:
+            assert args.batch_size == 1, "Only batch size 1 is supported!"    
             logging.info(f"Obtaining GradCAM")
-            for b_img, b_tgt in loader:
-                b_targets = b_tgt["labels"]
-                ids = b_tgt["image_id"]
-                for i, (img, tgt, img_id) in enumerate(zip(b_img, b_targets, ids)):
-                    img = img.unsqueeze(0)
-                    for meniscus in range(2):
-                        name = f"{img_id.item()}_{LAT_MED[meniscus]}"
-                        index = (0, meniscus, ...)
-                        sg_sal(
-                            img,
-                            index,
-                            save_as=name,
-                            num_passes=20,
-                        )
+
+            
+            for input, target in loader:
+                conv_features, enc_attn_weights, dec_attn_weights = [], [], []
+
+                hooks = [
+                    model.backbone[-2].register_forward_hook(
+                        lambda self, input, output: conv_features.append(output)
+                    ),
+                    model.transformer.encoder.layers[-1].self_attn.register_forward_hook(
+                        lambda self, input, output: enc_attn_weights.append(output[1])
+                    ),
+                    model.transformer.decoder.layers[-1].multihead_attn.register_forward_hook(
+                        lambda self, input, output: dec_attn_weights.append(output[1])
+                    ),
+                ]
+
+                outputs = model(input)
+                print("o", outputs)
+                print("t", target)
+
+                for hook in hooks:
+                    hook.remove()
+
+                image_id = target['image_id'].squeeze().item()
+
+                # don't need the list anymore
+                conv_features = conv_features[-1]
+                enc_attn_weights = enc_attn_weights[-1]
+                dec_attn_weights = dec_attn_weights[-1]
+                d, h, w = conv_features[0].tensors.shape[-3:]
+
+                fig, ax = plt.subplots(figsize=(10, 10))
+
+                dec_attn_weights = dec_attn_weights.view(1, 1, d,h,w).detach()
+
+                # 5 points where decoder attention is max
+                sattn = enc_attn_weights.reshape((d, h, w, d, h, w))
+
+
+                attention = []
+                attention.append(sattn[..., 4, 4, 4])
+                attention.append(sattn[..., 8, 4, 4])
+
+                attention = torch.stack(attention).mean(0).detach().view(1, 1, 10, 10, 10)
+                print(attention.shape)
+
+
+                dec_attn_weights = F.interpolate(dec_attn_weights, input.size()[-3:], mode="trilinear")
+                enc_attn_weights = F.interpolate(attention, input.size()[-3:], mode="trilinear")
+                
+                ax.imshow(dec_attn_weights[0, 0, 40])
+                ax.axis('off')
+                ax.set_title(f'query id: {1}')
+
+                to_gif(input.detach().squeeze(), dec_attn_weights.squeeze(),f"/scratch/visual/ashestak/meniscaltears/attention/dec_attention_{image_id}.gif")
+                to_gif(input.detach().squeeze(), enc_attn_weights.squeeze(),f"/scratch/visual/ashestak/meniscaltears/attention/enc_attention_{image_id}.gif")
+
+                
+                # logging.info(f"Image id: {image_id}; labels={target['labels'].flatten()}")
+                # index = (0, 0, ...)
+                # name = f"{image_id}_global"
+                # sg_sal(input, index, save_as=name, num_passes=20, target=target)
+
+            
+
+
         torch.save(test_results, "test_results.pt")
         logging.info("Testing finished, exitting")
         sys.exit(0)
@@ -301,9 +423,10 @@ def main(args):
     start = state["start"]
     best_val_loss = state["best_val_loss"]
 
-    tracker = EarlyStopping(name="val_loss", patience=15, warmup=10)
+    
+    tracker = EarlyStopping(name="val_loss", patience=args.early_stop.patience, warmup=args.early_stop.warmup)
 
-    criterion = MixCriterion(**args.weights)
+    criterion = MixCriterion(args)
     criterion.to(device)
 
     train_data, val_data = data
@@ -321,15 +444,16 @@ def main(args):
         num_workers=args.num_workers,
     )
 
+        
     # start training
     logging.info(f"Epoch {start}; Best Validation Loss {best_val_loss:.4f}")
+    logging.info(f"Positive weight: {train_data.pos_weight}")
     logging.info(f"Starting training")
     for epoch in range(start, epochs):
 
         pos_weight = loader_train.dataset.pos_weight
         if isinstance(pos_weight, torch.Tensor):
             pos_weight = pos_weight.to(device)
-
         train_results = train(
             model,
             loader_train,

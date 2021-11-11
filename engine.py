@@ -92,9 +92,13 @@ def evaluate(
         eval_results["losses"] = _reduce(losses)
 
     for name, metric in metrics.items():
-        eval_results[name] = metric(
-            targets, outputs, **metrics_kwargs.get(name, dict())
-        )
+        try:
+            metric_result = metric(
+                targets, outputs, **metrics_kwargs.get(name, dict())
+            )
+        except Exception as e:
+            metric_result = {"error": str(e)}
+        eval_results[name] = metric_result
     return eval_results
 
 
